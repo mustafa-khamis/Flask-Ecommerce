@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import password_field %}
+{% block title %}Your profile | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <header class="page-header">
+    <div>
+      <h1>Your profile</h1>
+      <p>Review your account details and keep your password up to date.</p>
+    </div>
+  </header>
+
+  <div class="profile-layout">
+    <section class="panel" aria-labelledby="details-title">
+      <div class="panel-header">
+        <h2 id="details-title">Account details</h2>
+        <p>If you change your email address, use the new one the next time you sign in.</p>
+      </div>
+      <form method="post" class="form">{{ csrf_input() }}
+        <div class="field">
+          <label for="name">Full name</label>
+          <input id="name" name="name" required minlength="2" autocomplete="name" value="{{ g.user.name }}">
+        </div>
+        <div class="field">
+          <label for="email">Email address</label>
+          <input id="email" name="email" type="email" required autocomplete="email" value="{{ g.user.email }}">
+        </div>
+        <dl class="detail-list">
+          <div><dt>Account type</dt><dd><span class="badge badge-{{ g.user.role | lower }}">{{ g.user.role }}</span></dd></div>
+          <div><dt>Member since</dt><dd>{{ g.user.created_at | date }}</dd></div>
+        </dl>
+        <p class="field-hint">Your account type can only be changed by an administrator.</p>
+        <div class="form-actions">
+          <button class="button button-primary" type="submit">Save changes</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="password-title">
+      <div class="panel-header">
+        <h2 id="password-title">{{ 'Change password' if g.user.has_password else 'Set a password' }}</h2>
+        <p>{% if g.user.has_password %}Enter your current password to confirm it is you.{% else %}You signed up with Google, so you have no password yet. Set one if you also want to sign in with your email.{% endif %}</p>
+      </div>
+      <form method="post" action="{{ url_for('change_password') }}" class="form">{{ csrf_input() }}
+        {% if g.user.has_password %}{{ password_field('current_password', 'Current password', 'current-password') }}{% endif %}
+        {{ password_field('new_password', 'New password', 'new-password', hint='At least 8 characters, with a letter and a number.', minlength=8) }}
+        {{ password_field('confirmation', 'Confirm new password', 'new-password', minlength=8, match='new_password') }}
+        <div class="form-actions">
+          <button class="button button-primary" type="submit">{{ 'Change password' if g.user.has_password else 'Set password' }}</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

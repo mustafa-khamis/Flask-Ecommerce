@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Link not valid | LumaMarket{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+{% block content %}
+<div class="container auth-layout">
+  <section class="auth-card" aria-labelledby="invalid-title">
+    <header class="auth-header">
+      <h1 id="invalid-title">This link is no longer valid</h1>
+      <p>Reset links expire after a short time and can only be used once. Request a new one to continue.</p>
+    </header>
+    <a class="button button-primary button-block" href="{{ url_for('forgot_password') }}">Request a new link</a>
+    <p class="auth-switch"><a href="{{ url_for('login') }}">Back to sign in</a></p>
+  </section>
+</div>
+{% endblock %}

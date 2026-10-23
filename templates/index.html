@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_macros.html" import product_card %}
+{% block title %}LumaMarket | Discover something worth finding{% endblock %}
+{% block body_class %}page-home{% endblock %}
+{% block content %}
+<section class="hero" aria-labelledby="hero-title">
+  <div class="container hero-inner">
+    <div class="hero-content">
+      <h1 id="hero-title">Discover something <span class="hero-accent">worth finding.</span></h1>
+      <p class="hero-lead">LumaMarket is an online marketplace that brings buyers and independent sellers together in one place.</p>
+      <p class="hero-lead">Buyers can look forward to finding useful things for everyday life, and sellers can set up their own account ready for listing products. Create a free account to get started.</p>
+      <div class="button-row">
+        {# Signed-out visitors are asked to sign in first; signed-in users go to their own dashboard. #}
+        <a class="button button-primary button-large"
+           href="{{ url_for(dashboard_url(g.user.role)) if g.user else url_for('login') }}">Start selling</a>
+        <a class="button button-secondary button-large" href="{{ url_for('catalog') }}">Browse products</a>
+      </div>
+    </div>
+
+    <figure class="hero-media">
+      <img src="{{ url_for('static', filename='img/hero-visual.png') }}"
+           width="1020" height="610"
+           alt="Illustration of an online marketplace shown on tablet and phone screens, with product cards, a sales chart and a payment card">
+    </figure>
+  </div>
+</section>
+
+<section class="section products-section" id="products" aria-labelledby="products-title">
+  <div class="container">
+    <div class="section-header">
+      <h2 id="products-title">Latest products</h2>
+      <p>Fresh listings from independent sellers.</p>
+    </div>
+    {% if featured %}
+      <div class="product-grid">
+        {% for product in featured %}{{ product_card(product) }}{% endfor %}
+      </div>
+      <p class="section-note"><a class="text-link" href="{{ url_for('catalog') }}">See all products <span aria-hidden="true">&rarr;</span></a></p>
+    {% else %}
+      <div class="empty-state panel">
+        <h3>No products yet</h3>
+        <p>Sellers have not listed anything yet. Create an account now so you are ready when they do.</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if not g.user %}
+<section class="section" aria-labelledby="accounts-title">
+  <div class="container">
+    <div class="section-header">
+      <h2 id="accounts-title">Two ways to use LumaMarket</h2>
+      <p>Pick the account that fits you. You can create it in under a minute.</p>
+    </div>
+
+    <div class="account-types">
+      <article class="account-type">
+        <span class="badge badge-buyer">Buyer</span>
+        <h3>Shop from independent sellers</h3>
+        <p>Find everyday products from smaller sellers you might not discover elsewhere.</p>
+        <a class="text-link" href="{{ url_for('register', role='Buyer') }}">Create a Buyer account <span aria-hidden="true">&rarr;</span></a>
+      </article>
+      <article class="account-type">
+        <span class="badge badge-seller">Seller</span>
+        <h3>Reach new customers</h3>
+        <p>Set up a seller account for your shop and get ready to list your products.</p>
+        <a class="text-link" href="{{ url_for('register', role='Seller') }}">Create a Seller account <span aria-hidden="true">&rarr;</span></a>
+      </article>
+    </div>
+
+  </div>
+</section>
+{% endif %}
+{% endblock %}

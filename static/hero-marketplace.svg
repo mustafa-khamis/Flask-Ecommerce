@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Abstract warm marketplace display">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#304d68"/>
+      <stop offset=".55" stop-color="#b58e7c"/>
+      <stop offset="1" stop-color="#e5c8a9"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" x2="1">
+      <stop stop-color="#fff" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".04"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="1270" cy="210" r="230" fill="#f4e1bd" opacity=".3"/>
+  <circle cx="1450" cy="690" r="360" fill="#7e9ca0" opacity=".35"/>
+  <path d="M930 900 1030 360h340l120 540Z" fill="#182e42" opacity=".5"/>
+  <path d="M1040 470h390v210h-390z" fill="url(#glass)" stroke="#fff" stroke-opacity=".32"/>
+  <path d="M1090 500h90v145h-90zM1210 500h90v145h-90zM1330 500h70v145h-70z" fill="#f9e7d0" opacity=".78"/>
+  <path d="M0 760h1600v140H0z" fill="#172a46" opacity=".48"/>
+  <path d="M240 710c120-95 230-95 350 0v50H240z" fill="#e8c5a9" opacity=".65"/>
+</svg>

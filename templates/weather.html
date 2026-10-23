@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Weather | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Weather</p>
+      <h1>Check the weather</h1>
+      <p>Search by city name or by latitude and longitude. No account needed.</p>
+    </div>
+  </header>
+
+  <div class="weather-layout">
+    <section class="panel" aria-labelledby="search-title">
+      <h2 id="search-title" class="visually-hidden">Search</h2>
+      <div class="weather-tabs" role="group" aria-label="Search type">
+        <a class="button {{ 'button-primary' if mode == 'city' else 'button-secondary' }} button-small" href="{{ url_for('weather') }}" {% if mode == 'city' %}aria-current="true"{% endif %}>City</a>
+        <a class="button {{ 'button-primary' if mode == 'coordinates' else 'button-secondary' }} button-small" href="{{ url_for('weather', mode='coordinates') }}" {% if mode == 'coordinates' %}aria-current="true"{% endif %}>Coordinates</a>
+      </div>
+      <form method="get" class="form" id="weather-form" data-loading-form>
+        <input type="hidden" name="mode" value="{{ mode }}">
+        {% if mode == 'city' %}
+          <div class="field">
+            <label for="city">City name</label>
+            <input id="city" name="city" required minlength="2" maxlength="100" value="{{ form.get('city', '') }}" placeholder="e.g. Kigali" autofocus>
+          </div>
+        {% else %}
+          <div class="field">
+            <label for="lat">Latitude (-90 to 90)</label>
+            <input id="lat" name="lat" required inputmode="decimal" value="{{ form.get('lat', '') }}" placeholder="e.g. -1.9441" autofocus>
+          </div>
+          <div class="field">
+            <label for="lon">Longitude (-180 to 180)</label>
+            <input id="lon" name="lon" required inputmode="decimal" value="{{ form.get('lon', '') }}" placeholder="e.g. 30.0619">
+          </div>
+        {% endif %}
+        <button class="button button-primary button-block" type="submit" data-loading-text="Searching&hellip;">Get weather</button>
+        <p class="weather-loading" role="status">Contacting the weather service&hellip;</p>
+      </form>
+    </section>
+
+    <section class="panel weather-result" aria-labelledby="result-title" aria-live="polite">
+      <h2 id="result-title" class="visually-hidden">Result</h2>
+      {% if error %}
+        <div class="alert alert-error" role="alert"><span class="alert-icon" aria-hidden="true"></span>
+          <p>{{ error }}{% if error.kind in ('network', 'service') %} <a href="{{ request.full_path }}">Try again</a>.{% endif %}</p></div>
+      {% elif report %}
+        <h3>{{ report.place }}{% if report.country %}, {{ report.country }}{% endif %}</h3>
+        <img class="weather-icon" src="{{ report.icon_url }}" width="96" height="96" alt="{{ report.description }}">
+        <p class="weather-temp">{{ report.temperature }}&deg;C</p>
+        <p>{{ report.description }}</p>
+        <dl class="weather-facts">
+          <div class="stat"><dt>Feels like</dt><dd>{{ report.feels_like }}&deg;C</dd></div>
+          <div class="stat"><dt>Humidity</dt><dd>{{ report.humidity }}%</dd></div>
+          <div class="stat"><dt>Wind speed</dt><dd>{{ report.wind_speed }} m/s</dd></div>
+        </dl>
+        <p class="field-hint">Report from {{ report.observed }}</p>
+      {% else %}
+        <div class="empty-state"><h3>No search yet</h3><p>Enter a place on the left to see its current weather.</p></div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

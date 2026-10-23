@@ -1,0 +1,8 @@
+{# Flash messages. Errors interrupt screen readers (role=alert); other messages are announced politely. #}
+{% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="alert alert-{{ category if category in ['success', 'error', 'info'] else 'info' }}"
+       role="{{ 'alert' if category == 'error' else 'status' }}">
+    <span class="alert-icon" aria-hidden="true"></span>
+    <p>{{ message }}</p>
+  </div>
+{% endfor %}

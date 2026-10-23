@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Your cart | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <header class="page-header"><div><h1>Your cart</h1></div></header>
+
+  {% if cart.lines %}
+  <section class="panel panel-flush" aria-label="Cart items">
+    <div class="table-wrap">
+      <table class="cart-table">
+        <thead><tr>
+          <th scope="col">Product</th><th scope="col">Price</th><th scope="col">Quantity</th>
+          <th scope="col">Subtotal</th><th scope="col"><span class="visually-hidden">Remove</span></th>
+        </tr></thead>
+        <tbody>
+        {% for line in cart.lines %}
+          {% set p = line.product %}
+          <tr>
+            <th scope="row" class="user-cell">
+              <a class="user-name" href="{{ url_for('product_detail', product_id=p.id) }}">{{ p.name }}</a>
+              {% if line.issue %}<span class="stock stock-out">{{ line.issue }}</span>{% endif %}
+            </th>
+            <td data-label="Price">
+              {{ line.price.current_cents | money }}
+              {% if line.price.on_sale %}<s class="price-was">{{ line.price.regular_cents | money }}</s>{% endif %}
+            </td>
+            <td data-label="Quantity">
+              <form method="post" action="{{ url_for('cart_update', product_id=p.id) }}" class="inline-form">{{ csrf_input() }}
+                <label class="visually-hidden" for="qty-{{ p.id }}">Quantity of {{ p.name }}</label>
+                <input id="qty-{{ p.id }}" class="qty-input" name="quantity" type="number" min="0" max="{{ [p.stock, 99] | min }}" value="{{ line.quantity }}" required>
+                <button class="button button-secondary button-small" type="submit">Update</button>
+              </form>
+            </td>
+            <td data-label="Subtotal">{{ line.line_total | money }}</td>
+            <td class="action-cell">
+              <form method="post" action="{{ url_for('cart_remove', product_id=p.id) }}">{{ csrf_input() }}
+                <button class="button button-ghost button-small" type="submit">Remove<span class="visually-hidden"> {{ p.name }}</span></button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="cart-total">
+      <p>Total <strong>{{ cart.total_cents | money }}</strong></p>
+      {% if cart.has_problems %}
+        <p class="field-hint">Fix the highlighted items (lower the quantity or remove them) before checking out.</p>
+        <span class="button button-primary" aria-disabled="true">Checkout</span>
+      {% else %}
+        <a class="button button-primary" href="{{ url_for('checkout') }}">Checkout</a>
+      {% endif %}
+    </div>
+  </section>
+  {% else %}
+  <div class="empty-state panel">
+    <h3>Your cart is empty</h3>
+    <p>Find something you like in the catalogue.</p>
+    <a class="button button-primary" href="{{ url_for('catalog') }}">Browse products</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

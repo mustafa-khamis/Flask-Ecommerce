@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Choose your account type | LumaMarket{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+{% block flashes %}{% endblock %}
+{% block content %}
+<div class="container auth-layout">
+  <section class="auth-card auth-card-wide" aria-labelledby="role-title">
+    <header class="auth-header">
+      <h1 id="role-title">One last step</h1>
+      <p>You are signing up with Google as <strong>{{ pending.email }}</strong>. Choose how you want to use LumaMarket.</p>
+    </header>
+
+    {% include "_flashes.html" %}
+
+    <form method="post" class="form">{{ csrf_input() }}
+      <fieldset class="role-picker">
+        <legend>I want to</legend>
+        <div class="role-options">
+          <label class="role-option">
+            <input type="radio" name="role" value="Buyer" required>
+            <span class="role-option-body">
+              <span class="role-option-title">Shop as a Buyer</span>
+              <span class="role-option-text">Discover products from independent sellers.</span>
+            </span>
+          </label>
+          <label class="role-option">
+            <input type="radio" name="role" value="Seller">
+            <span class="role-option-body">
+              <span class="role-option-title">Sell as a Seller</span>
+              <span class="role-option-text">Set up your shop. Listing tools are coming soon.</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+      <button class="button button-primary button-block" type="submit">Create account</button>
+    </form>
+
+    <p class="auth-switch"><a href="{{ url_for('login') }}">Cancel and go back</a></p>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% set editing = product is not none %}
+{% block title %}{{ 'Edit product' if editing else 'New product' }} | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <p class="breadcrumb"><a href="{{ url_for('seller_dashboard') }}">&larr; Seller dashboard</a></p>
+  <header class="page-header"><div><h1>{{ 'Edit product' if editing else 'Add a product' }}</h1></div></header>
+  <section class="panel product-form-panel" aria-labelledby="form-title">
+    <form method="post" enctype="multipart/form-data" class="form">{{ csrf_input() }}
+      <h2 id="form-title" class="visually-hidden">Product details</h2>
+      <div class="field">
+        <label for="name">Product name</label>
+        <input id="name" name="name" required minlength="2" maxlength="120" value="{{ form.get('name', '') }}">
+      </div>
+      <div class="field">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" rows="4" maxlength="2000">{{ form.get('description', '') }}</textarea>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="price">Regular price</label>
+          <input id="price" name="price" inputmode="decimal" required pattern="\d+(\.\d{1,2})?" value="{{ form.get('price', '') }}" placeholder="e.g. 19.99">
+        </div>
+        <div class="field">
+          <label for="stock">Stock quantity</label>
+          <input id="stock" name="stock" type="number" min="0" max="100000" step="1" required value="{{ form.get('stock', '') }}">
+        </div>
+      </div>
+      <fieldset class="promo-fieldset">
+        <legend>Promotion (optional)</legend>
+        <p class="field-hint">Leave empty for no sale. The sale price must be lower than the regular price. Without dates, the sale runs until you remove it.</p>
+        <div class="field-row">
+          <div class="field">
+            <label for="sale_price">Sale price</label>
+            <input id="sale_price" name="sale_price" inputmode="decimal" pattern="\d+(\.\d{1,2})?" value="{{ form.get('sale_price', '') }}">
+          </div>
+          <div class="field">
+            <label for="sale_start">Starts on</label>
+            <input id="sale_start" name="sale_start" type="date" value="{{ form.get('sale_start', '') }}">
+          </div>
+          <div class="field">
+            <label for="sale_end">Ends on</label>
+            <input id="sale_end" name="sale_end" type="date" value="{{ form.get('sale_end', '') }}">
+          </div>
+        </div>
+      </fieldset>
+      <div class="field">
+        <label for="image">Product image{{ ' (leave empty to keep the current one)' if editing and product.image }}</label>
+        <p class="field-hint">PNG, JPG, GIF or WebP, up to 2 MB.</p>
+        {% if editing and product.image %}<img class="form-thumb" src="{{ url_for('product_image', filename=product.image) }}" alt="Current image">{% endif %}
+        <input id="image" name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+      </div>
+      <div class="form-actions">
+        <button class="button button-primary" type="submit">{{ 'Save changes' if editing else 'Create product' }}</button>
+        <a class="button button-ghost" href="{{ url_for('seller_dashboard') }}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{% block error_title %}{{ title }}{% endblock %} | LumaMarket{% endblock %}
+{% block content %}
+<div class="container error-layout">
+  <section class="error-panel" aria-labelledby="error-title">
+    <p class="error-code">Error {% block error_code %}{{ code }}{% endblock %}</p>
+    <h1 id="error-title">{{ self.error_title() }}</h1>
+    <p>{% block error_message %}{{ message }}{% endblock %}</p>
+    <div class="button-row button-row-center">
+      {% if g.user %}
+        <a class="button button-primary" href="{{ url_for(dashboard_url(g.user.role)) }}">Go to your dashboard</a>
+      {% else %}
+        <a class="button button-primary" href="{{ url_for('login') }}">Sign in</a>
+      {% endif %}
+      <a class="button button-secondary" href="{{ url_for('welcome') }}">Back to home</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

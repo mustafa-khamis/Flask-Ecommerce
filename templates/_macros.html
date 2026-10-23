@@ -1,0 +1,51 @@
+{# A labelled password input with an optional hint and a Show/Hide button.
+   The button stays hidden until app.js runs, so nothing breaks without JavaScript. #}
+{% macro password_field(id, label, autocomplete, hint=None, minlength=None, match=None) %}
+<div class="field">
+  <label for="{{ id }}">{{ label }}</label>
+  {% if hint %}<p class="field-hint" id="{{ id }}-hint">{{ hint }}</p>{% endif %}
+  <div class="password-input">
+    <input id="{{ id }}" name="{{ id }}" type="password" required
+           autocomplete="{{ autocomplete }}"
+           {% if minlength %}minlength="{{ minlength }}"{% endif %}
+           {% if match %}data-match="{{ match }}"{% endif %}
+           {% if hint or match %}aria-describedby="{% if hint %}{{ id }}-hint{% endif %}{% if match %} {{ id }}-feedback{% endif %}"{% endif %}>
+    <button type="button" class="password-toggle" data-toggle-password="{{ id }}"
+            aria-controls="{{ id }}" aria-pressed="false" hidden>Show</button>
+  </div>
+  {% if match %}<p class="field-feedback" id="{{ id }}-feedback" aria-live="polite"></p>{% endif %}
+</div>
+{% endmacro %}
+
+{# Price with the regular price struck through and a -N% badge, only while a valid promotion applies. #}
+{% macro price_block(product) %}
+  {% set info = price_info(product) %}
+  <p class="price">
+    <span class="price-now">{{ info.current_cents | money }}</span>
+    {% if info.on_sale %}
+      <s class="price-was"><span class="visually-hidden">Regular price </span>{{ info.regular_cents | money }}</s>
+      {% if info.percent_off %}<span class="badge badge-sale">-{{ info.percent_off }}%</span>{% endif %}
+    {% endif %}
+  </p>
+{% endmacro %}
+
+{% macro stock_label(product) %}
+  {% if product.stock <= 0 %}<span class="stock stock-out">Out of stock</span>
+  {% elif product.stock <= 5 %}<span class="stock stock-low">Only {{ product.stock }} left</span>
+  {% else %}<span class="stock stock-in">In stock</span>{% endif %}
+{% endmacro %}
+
+{% macro product_card(product) %}
+<article class="product-card">
+  <a class="product-image" href="{{ url_for('product_detail', product_id=product.id) }}" tabindex="-1" aria-hidden="true">
+    {% if product.image %}<img src="{{ url_for('product_image', filename=product.image) }}" alt="" loading="lazy">
+    {% else %}<span class="product-image-empty">No image</span>{% endif %}
+  </a>
+  <div class="product-body">
+    <h3><a href="{{ url_for('product_detail', product_id=product.id) }}">{{ product.name }}</a></h3>
+    <p class="product-seller">Sold by {{ product.seller_name }}</p>
+    {{ price_block(product) }}
+    {{ stock_label(product) }}
+  </div>
+</article>
+{% endmacro %}

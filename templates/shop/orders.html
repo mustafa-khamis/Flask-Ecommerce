@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Your orders | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <header class="page-header"><div><h1>Your orders</h1></div></header>
+  {% if orders %}
+  <section class="panel panel-flush" aria-label="Orders">
+    <div class="table-wrap">
+      <table class="cart-table">
+        <thead><tr><th scope="col">Order</th><th scope="col">Date</th><th scope="col">Items</th><th scope="col">Total</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+        {% for order in orders %}
+          <tr>
+            <th scope="row" class="user-cell"><a href="{{ url_for('order_detail', order_id=order.id) }}">Order #{{ order.id }}</a></th>
+            <td data-label="Date">{{ order.created_at | date }}</td>
+            <td data-label="Items">{{ order.item_count }}</td>
+            <td data-label="Total">{{ order.total_cents | money }}</td>
+            <td data-label="Status">{{ order.status }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% else %}
+  <div class="empty-state panel"><h3>No orders yet</h3><p>Your confirmed orders will be listed here.</p>
+    <a class="button button-primary" href="{{ url_for('catalog') }}">Browse products</a></div>
+  {% endif %}
+</div>
+{% endblock %}

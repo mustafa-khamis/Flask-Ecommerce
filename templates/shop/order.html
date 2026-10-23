@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Order #{{ order.id }} | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Order confirmation</p>
+      <h1>Thank you, order #{{ order.id }} is confirmed</h1>
+      <p>Placed on {{ order.created_at | date }}. Payment method: {{ order.payment_method }} (no money was taken).</p>
+    </div>
+  </header>
+  <div class="profile-layout">
+    <section class="panel panel-flush" aria-labelledby="items-title">
+      <div class="panel-header"><h2 id="items-title">Items</h2></div>
+      <div class="table-wrap">
+        <table class="cart-table">
+          <thead><tr><th scope="col">Product</th><th scope="col">Price</th><th scope="col">Qty</th><th scope="col">Subtotal</th></tr></thead>
+          <tbody>
+          {% for item in items %}
+            <tr><th scope="row" class="user-cell">{{ item.product_name }}</th>
+              <td data-label="Price">{{ item.unit_price_cents | money }}</td>
+              <td data-label="Qty">{{ item.quantity }}</td>
+              <td data-label="Subtotal">{{ (item.unit_price_cents * item.quantity) | money }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="cart-total-line">Total <strong>{{ order.total_cents | money }}</strong></p>
+    </section>
+    <section class="panel" aria-labelledby="ship-title">
+      <div class="panel-header"><h2 id="ship-title">Delivery</h2></div>
+      <dl class="detail-list detail-list-stacked">
+        <div><dt>Name</dt><dd>{{ order.shipping_name }}</dd></div>
+        <div><dt>Address</dt><dd>{{ order.shipping_address }}</dd></div>
+        <div><dt>Status</dt><dd><span class="status status-active">{{ order.status }}</span></dd></div>
+      </dl>
+      <div class="panel-footer">
+        <a class="button button-primary" href="{{ url_for('catalog') }}">Keep shopping</a>
+        <a class="text-link" href="{{ url_for('orders') }}">All orders</a>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

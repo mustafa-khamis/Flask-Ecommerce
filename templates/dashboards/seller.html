@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Seller dashboard | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <header class="page-header page-header-row">
+    <div>
+      <p class="eyebrow">Seller dashboard</p>
+      <h1>Welcome, {{ g.user.name }}</h1>
+      <p>Manage your products and see what has been sold.</p>
+    </div>
+    <a class="button button-primary" href="{{ url_for('product_new') }}">Add a product</a>
+  </header>
+
+  <section class="stat-strip" aria-label="Summary">
+    <dl>
+      <div class="stat"><dt>Products</dt><dd>{{ products | length }}</dd></div>
+      <div class="stat"><dt>Low stock (5 or less)</dt><dd>{{ low_stock }}</dd></div>
+      <div class="stat"><dt>Items sold</dt><dd>{{ sales | sum(attribute='quantity') }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="panel panel-flush" aria-labelledby="products-title">
+    <div class="panel-header"><h2 id="products-title">Your products</h2></div>
+    {% if products %}
+    <div class="table-wrap">
+      <table class="cart-table">
+        <thead><tr><th scope="col">Product</th><th scope="col">Price</th><th scope="col">Stock</th><th scope="col">Visibility</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>
+        {% for p in products %}
+          {% set info = price_info(p) %}
+          <tr class="{% if not p.is_active %}is-inactive{% endif %}">
+            <th scope="row" class="user-cell"><a class="user-name" href="{{ url_for('product_detail', product_id=p.id) }}">{{ p.name }}</a></th>
+            <td data-label="Price">{{ info.current_cents | money }}{% if info.on_sale %} <span class="badge badge-sale">-{{ info.percent_off }}%</span>{% endif %}</td>
+            <td data-label="Stock">{% if p.stock == 0 %}<span class="stock stock-out">Out of stock</span>{% else %}{{ p.stock }}{% endif %}</td>
+            <td data-label="Visibility">{{ 'Visible' if p.is_active else 'Hidden' }}</td>
+            <td class="action-cell">
+              <a class="button button-secondary button-small" href="{{ url_for('product_edit', product_id=p.id) }}">Edit<span class="visually-hidden"> {{ p.name }}</span></a>
+              <form method="post" action="{{ url_for('product_status', product_id=p.id) }}" class="inline-form">{{ csrf_input() }}
+                <input type="hidden" name="active" value="{{ 0 if p.is_active else 1 }}">
+                <button class="button button-ghost button-small" type="submit">{{ 'Hide' if p.is_active else 'Show' }}<span class="visually-hidden"> {{ p.name }}</span></button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><h3>You have no products yet</h3><p>Add your first product to make it appear in the catalogue.</p>
+      <a class="button button-primary" href="{{ url_for('product_new') }}">Add a product</a></div>
+    {% endif %}
+  </section>
+
+  <section class="panel panel-flush" aria-labelledby="sales-title">
+    <div class="panel-header"><h2 id="sales-title">Recent sales</h2></div>
+    {% if sales %}
+    <div class="table-wrap">
+      <table class="cart-table">
+        <thead><tr><th scope="col">Order</th><th scope="col">Date</th><th scope="col">Product</th><th scope="col">Qty</th><th scope="col">Buyer</th><th scope="col">Amount</th></tr></thead>
+        <tbody>
+        {% for s in sales %}
+          <tr><th scope="row" class="user-cell">#{{ s.order_id }}</th><td data-label="Date">{{ s.created_at | date }}</td>
+            <td data-label="Product">{{ s.product_name }}</td><td data-label="Qty">{{ s.quantity }}</td>
+            <td data-label="Buyer">{{ s.buyer_name }}</td><td data-label="Amount">{{ (s.unit_price_cents * s.quantity) | money }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="empty-state"><h3>No sales yet</h3><p>Sales of your products will be listed here.</p></div>{% endif %}
+  </section>
+
+  <div class="dashboard-layout">{% include "_account_summary.html" %}</div>
+</div>
+{% endblock %}

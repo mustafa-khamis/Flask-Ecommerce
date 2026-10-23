@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Weather searches | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <p class="breadcrumb"><a href="{{ url_for('admin_dashboard') }}">&larr; Admin dashboard</a></p>
+  <header class="page-header"><div><p class="eyebrow">Admin dashboard</p><h1>Weather search history</h1>
+    <p>Every weather search, whether it worked or not, and basic usage figures.</p></div></header>
+
+  <section class="stat-strip" aria-label="Usage statistics">
+    <dl>
+      <div class="stat"><dt>Total searches</dt><dd>{{ stats.total }}</dd></div>
+      <div class="stat"><dt>Today</dt><dd>{{ stats.today }}</dd></div>
+      <div class="stat"><dt>Successful</dt><dd>{{ stats.succeeded }}</dd></div>
+      <div class="stat"><dt>Failed</dt><dd>{{ stats.failed }}</dd></div>
+      <div class="stat"><dt>Success rate</dt><dd>{{ stats.success_rate }}%</dd></div>
+      <div class="stat"><dt>By signed-in users</dt><dd>{{ stats.signed_in }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="panel" aria-labelledby="top-title">
+    <div class="panel-header"><h2 id="top-title">Most searched places</h2></div>
+    {% if stats.top_places %}
+      <ol>{% for place in stats.top_places %}<li>{{ place.place }}{% if place.country %}, {{ place.country }}{% endif %} &mdash; {{ place.searches }} {{ 'search' if place.searches == 1 else 'searches' }}</li>{% endfor %}</ol>
+    {% else %}<p>No successful searches yet.</p>{% endif %}
+  </section>
+
+  <section class="panel panel-flush" aria-labelledby="history-title">
+    <div class="panel-header"><h2 id="history-title">Latest 50 searches</h2></div>
+    {% if searches %}
+    <div class="table-wrap">
+      <table class="cart-table">
+        <thead><tr><th scope="col">When (UTC)</th><th scope="col">Search</th><th scope="col">Result</th><th scope="col">Temperature</th><th scope="col">Who</th></tr></thead>
+        <tbody>
+        {% for s in searches %}
+          <tr>
+            <th scope="row" class="user-cell nowrap">{{ s.created_at }}</th>
+            <td data-label="Search">{{ s.search_type | capitalize }}: {{ s.query }}</td>
+            <td data-label="Result">{% if s.success %}{{ s.place }}{% if s.country %}, {{ s.country }}{% endif %} &middot; {{ s.condition }}{% else %}<span class="stock stock-out">Failed</span> <span class="field-hint">{{ s.error }}</span>{% endif %}</td>
+            <td data-label="Temperature">{% if s.success %}{{ s.temperature }}&deg;C{% else %}&ndash;{% endif %}</td>
+            <td data-label="Who">{{ s.user_name or 'Visitor' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="empty-state"><h3>No searches yet</h3><p>Searches made on the Weather page will be listed here.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Buyer dashboard | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Buyer dashboard</p>
+      <h1>Welcome, {{ g.user.name }}</h1>
+      <p>Browse the catalogue, manage your cart and review your orders.</p>
+    </div>
+  </header>
+
+  <div class="dashboard-layout">
+    <section class="panel" aria-labelledby="shopping-title">
+      <div class="panel-header"><h2 id="shopping-title">Recent orders</h2></div>
+      {% if recent_orders %}
+        <ul class="summary-list">
+          {% for order in recent_orders %}
+            <li><a href="{{ url_for('order_detail', order_id=order.id) }}">Order #{{ order.id }}</a>
+              <span>{{ order.created_at | date }} &middot; {{ order.total_cents | money }}</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>You have not placed any orders yet.</p>
+      {% endif %}
+      <div class="panel-footer">
+        <a class="button button-primary" href="{{ url_for('catalog') }}">Browse products</a>
+        <a class="button button-secondary" href="{{ url_for('cart') }}">View cart{% if cart_count %} ({{ cart_count }}){% endif %}</a>
+        <a class="text-link" href="{{ url_for('orders') }}">All orders</a>
+      </div>
+    </section>
+
+    {% include "_account_summary.html" %}
+  </div>
+</div>
+{% endblock %}

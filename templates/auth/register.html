@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import password_field %}
+{% block title %}Create account | LumaMarket{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+{% block flashes %}{% endblock %}
+{% block content %}
+{# Keep the chosen role after a failed submit, or pre-select it from the homepage link (?role=Seller). #}
+{% set selected_role = request.form.get('role') or request.args.get('role') %}
+<div class="container auth-layout">
+  <section class="auth-card auth-card-wide" aria-labelledby="register-title">
+    <header class="auth-header">
+      <h1 id="register-title">Create your account</h1>
+      <p>Join LumaMarket as a Buyer or a Seller. All fields are required.</p>
+    </header>
+
+    {% include "_flashes.html" %}
+
+
+    {% if google_enabled %}
+    <a class="button button-google button-block" href="{{ url_for('google_start', role=selected_role) if selected_role else url_for('google_start') }}">
+      <svg class="google-icon" width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-2.9-.8-4.7s.3-3.3.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.600 2.600 10.800l7.900-6.100z"/><path fill="#34A853" d="M24 48c6.500 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+      Continue with Google
+    </a>
+    <p class="divider"><span>or use your email</span></p>
+    {% endif %}
+
+    <form method="post" class="form">{{ csrf_input() }}
+      <fieldset class="role-picker">
+        <legend>I want to</legend>
+        <div class="role-options">
+        <label class="role-option">
+          <input type="radio" name="role" value="Buyer" required {% if selected_role == 'Buyer' %}checked{% endif %}>
+          <span class="role-option-body">
+            <span class="role-option-title">Shop as a Buyer</span>
+            <span class="role-option-text">Discover products from independent sellers.</span>
+          </span>
+        </label>
+        <label class="role-option">
+          <input type="radio" name="role" value="Seller" {% if selected_role == 'Seller' %}checked{% endif %}>
+          <span class="role-option-body">
+            <span class="role-option-title">Sell as a Seller</span>
+            <span class="role-option-text">Set up your shop. Listing tools are coming soon.</span>
+          </span>
+        </label>
+        </div>
+      </fieldset>
+
+      <div class="field">
+        <label for="name">Full name</label>
+        <input id="name" name="name" required minlength="2" autocomplete="name"
+               value="{{ request.form.get('name', '') }}">
+      </div>
+      <div class="field">
+        <label for="email">Email address</label>
+        <p class="field-hint" id="email-hint">You will use this to sign in.</p>
+        <input id="email" name="email" type="email" required autocomplete="email"
+               aria-describedby="email-hint" value="{{ request.form.get('email', '') }}">
+      </div>
+      {{ password_field('password', 'Password', 'new-password', hint='At least 8 characters, with a letter and a number.', minlength=8) }}
+      {{ password_field('confirmation', 'Confirm password', 'new-password', minlength=8, match='password') }}
+
+      <button class="button button-primary button-block" type="submit">Create account</button>
+    </form>
+
+    <p class="auth-switch">Already have an account? <a href="{{ url_for('login') }}">Sign in</a></p>
+  </section>
+</div>
+{% endblock %}

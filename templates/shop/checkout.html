@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Checkout | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <header class="page-header"><div><h1>Checkout</h1><p>Review your order and enter a delivery address.</p></div></header>
+  <div class="profile-layout">
+    <section class="panel" aria-labelledby="delivery-title">
+      <div class="panel-header"><h2 id="delivery-title">Delivery</h2></div>
+      <form method="post" class="form">{{ csrf_input() }}
+        <div class="field">
+          <label for="shipping_name">Name for delivery</label>
+          <input id="shipping_name" name="shipping_name" required minlength="2" maxlength="100" autocomplete="name" value="{{ form.get('shipping_name', '') }}">
+        </div>
+        <div class="field">
+          <label for="shipping_address">Delivery address</label>
+          <textarea id="shipping_address" name="shipping_address" required minlength="5" maxlength="300" rows="3" autocomplete="street-address">{{ form.get('shipping_address', '') }}</textarea>
+        </div>
+        <div class="payment-note">
+          <h3>Payment (simulated)</h3>
+          <p>No real payment is taken and you should <strong>not</strong> enter card details anywhere on this site. This is a demonstration checkout.</p>
+          <label class="checkbox"><input type="checkbox" name="confirm_simulated" value="1" required> I understand this is a simulated payment.</label>
+        </div>
+        <div class="form-actions">
+          <button class="button button-primary" type="submit" {% if cart.has_problems %}disabled{% endif %}>Place order &middot; {{ cart.total_cents | money }}</button>
+          <a class="button button-ghost" href="{{ url_for('cart') }}">Back to cart</a>
+        </div>
+      </form>
+    </section>
+    <section class="panel" aria-labelledby="summary-title">
+      <div class="panel-header"><h2 id="summary-title">Order summary</h2></div>
+      <ul class="summary-list">
+        {% for line in cart.lines %}
+          <li><span>{{ line.quantity }} &times; {{ line.product.name }}{% if line.issue %} <span class="stock stock-out">{{ line.issue }}</span>{% endif %}</span><span>{{ line.line_total | money }}</span></li>
+        {% endfor %}
+      </ul>
+      <p class="cart-total-line">Total <strong>{{ cart.total_cents | money }}</strong></p>
+      {% if cart.has_problems %}<p class="field-hint">Some items need attention. <a href="{{ url_for('cart') }}">Go back to your cart</a>.</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
