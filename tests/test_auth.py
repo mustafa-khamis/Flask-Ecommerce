@@ -159,6 +159,46 @@ class PasswordResetTests(AppTestCase):
         self.assertEqual(self.query("SELECT has_password FROM users")[0][0], 1)
 
 
+class ResetEmailContentTests(AppTestCase):
+    def test_link_is_clean_and_identical_in_text_and_html(self):
+        self.make_user("a@example.com", name="Ann")
+        with mock.patch.object(app_module, "APP_BASE_URL", "https://shop.example.com"), \
+                mock.patch("emailer.send_email", return_value=True) as sent:
+            self.post("/forgot-password", {"email": "a@example.com"}, token_path="/forgot-password")
+        subject, text, html = sent.call_args[0][1:4]
+        token = self.query("SELECT id FROM password_resets")  # token itself is only in the email
+        urls_in_text = re.findall(r"https?://\S+", text)
+        urls_in_html = re.findall(r'href="([^"]+)"', html)
+        self.assertEqual(len(urls_in_text), 1)
+        self.assertEqual(urls_in_text, urls_in_html)
+        url = urls_in_text[0]
+        self.assertRegex(url, r"^https://shop\.example\.com/reset-password/[A-Za-z0-9_-]{43}$")
+        self.assertTrue(text.rstrip().endswith(url))             # nothing is appended to the URL
+        self.assertTrue(text.splitlines()[-1] == url)            # the URL sits on its own line
+        self.assertIn("If you did not request this", text)
+        self.assertNotIn(url + "If", text + html)
+        self.assertNotRegex(text, r"\[.*\]\(.*\)")                # no Markdown link syntax
+        self.assertEqual(url.rsplit("/", 1)[1] in html, True)
+        self.assertEqual(len(token), 1)
+
+    def test_link_still_works_once_and_expires(self):
+        self.make_user("a@example.com")
+        with mock.patch("emailer.send_email", return_value=True) as sent:
+            self.post("/forgot-password", {"email": "a@example.com"}, token_path="/forgot-password")
+        path = re.sub(r"^https?://[^/]+", "", re.findall(r"https?://\S+", sent.call_args[0][2])[0])
+        self.assertEqual(self.client.get(path).status_code, 200)
+        self.execute("UPDATE password_resets SET expires_at = datetime('now', '-1 minute')")
+        self.assertEqual(self.client.get(path).status_code, 400)
+
+    def test_falls_back_to_request_host_when_base_url_not_set(self):
+        self.make_user("a@example.com")
+        with mock.patch.object(app_module, "APP_BASE_URL", ""), \
+                mock.patch("emailer.send_email", return_value=True) as sent:
+            self.post("/forgot-password", {"email": "a@example.com"}, token_path="/forgot-password")
+        self.assertRegex(re.findall(r"https?://\S+", sent.call_args[0][2])[0],
+                         r"^http://localhost/reset-password/[A-Za-z0-9_-]+$")
+
+
 class ResendTests(AppTestCase):
     def test_email_payload_sent_to_resend(self):
         import emailer

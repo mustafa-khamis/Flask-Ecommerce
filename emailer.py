@@ -43,14 +43,31 @@ def send_email(to, subject, text, html):
     return False
 
 
-def send_reset_email(to, name, link, minutes):
-    text = (f"Hello {name},\n\nWe received a request to reset your LumaMarket password.\n"
-            f"Open this link within {minutes} minutes to choose a new one:\n\n{link}\n\n"
-            "If you did not ask for this, you can ignore this email. Your password will not change.")
-    html = (f"<p>Hello {escape(name)},</p><p>We received a request to reset your LumaMarket password. "
+def build_reset_email(name, link, minutes):
+    """Return (text, html) for the reset email. Both contain exactly the same link.
+
+    In the plain-text version the link is the very last thing, so no sentence can ever run on
+    after it, even if a mail system joins the lines together. It is a bare URL, not Markdown.
+    """
+    text = "\n".join([
+        f"Hello {name},",
+        "",
+        "We received a request to reset your LumaMarket password.",
+        "If you did not request this, you can ignore this email. Your password will not change.",
+        "",
+        f"To choose a new password, open this link within {minutes} minutes (it works once):",
+        link,
+    ])
+    html = (f"<p>Hello {escape(name)},</p>"
+            f"<p>We received a request to reset your LumaMarket password. "
             f"The link below works for {minutes} minutes and can be used once.</p>"
             f'<p><a href="{escape(link)}">Choose a new password</a></p>'
-            "<p>If you did not ask for this, you can ignore this email. Your password will not change.</p>")
+            "<p>If you did not request this, you can ignore this email. Your password will not change.</p>")
+    return text, html
+
+
+def send_reset_email(to, name, link, minutes):
+    text, html = build_reset_email(name, link, minutes)
     sent = send_email(to, "Reset your LumaMarket password", text, html)
     if not sent and os.environ.get("FLASK_DEBUG") == "1":
         print(f"[debug only] Password reset link for {to}: {link}")

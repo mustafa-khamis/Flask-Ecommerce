@@ -183,6 +183,13 @@ RESET_REQUEST_MESSAGE = ("If an account exists for that email address, we have s
                          f"password. It works for {PASSWORD_RESET_MINUTES} minutes.")
 
 
+def reset_link(token):
+    """Absolute reset URL. APP_BASE_URL (if set) is the public address; otherwise Flask's own external URL."""
+    if APP_BASE_URL:
+        return APP_BASE_URL + url_for("reset_password", token=token)
+    return url_for("reset_password", token=token, _external=True)
+
+
 @app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
@@ -200,11 +207,17 @@ def forgot_password():
         throttle_record("reset-ip", ip)
 
         user = get_user_by_email(email)
-        if within_limits and user and user["is_active"]:
+        # The page always answers the same way; the server log says what really happened.
+        if not within_limits:
+            app.logger.warning("Password reset NOT sent to %s: rate limit reached (3 per email, 10 per IP per hour).", email)
+        elif not user or not user["is_active"]:
+            app.logger.info("Password reset requested for %s: no active account, nothing sent.", email)
+        else:
             token = create_reset_token(user["id"], PASSWORD_RESET_MINUTES)
-            base = APP_BASE_URL or request.host_url.rstrip("/")
-            link = f"{base}{url_for('reset_password', token=token)}"
-            send_reset_email(user["email"], user["name"], link, PASSWORD_RESET_MINUTES)
+            if send_reset_email(user["email"], user["name"], reset_link(token), PASSWORD_RESET_MINUTES):
+                app.logger.info("Password reset email sent to %s.", email)
+            else:
+                app.logger.error("Password reset email to %s FAILED to send (see the Resend message above).", email)
         flash(RESET_REQUEST_MESSAGE, "success")
         return redirect(url_for("forgot_password"))
     return render_template("auth/forgot_password.html")
