@@ -17,7 +17,8 @@ SAMPLE = {
 
 def fake_response(payload):
     response = mock.MagicMock()
-    response.__enter__.return_value = io.BytesIO(json.dumps(payload).encode())
+    # A fresh stream for every call, so one mock can serve several requests.
+    response.__enter__.side_effect = lambda: io.BytesIO(json.dumps(payload).encode())
     return response
 
 

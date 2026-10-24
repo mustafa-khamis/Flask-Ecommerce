@@ -3,3 +3,5 @@ __pycache__/
 .env
 .venv/
 EcommerceDB
+static/uploads/
+.DS_Store

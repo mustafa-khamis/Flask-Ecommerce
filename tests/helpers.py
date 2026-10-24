@@ -1,17 +1,8 @@
 """Shared test setup: every test run gets its own empty database and upload folder."""
-import os
 import re
-import tempfile
 import unittest
 
-_tmp = tempfile.mkdtemp(prefix="lumamarket-tests-")
-os.environ["ECOMMERCE_DATABASE"] = os.path.join(_tmp, "test.db")
-os.environ["UPLOAD_DIR"] = os.path.join(_tmp, "uploads")
-os.environ["SECRET_KEY"] = "test-secret"
-os.environ["RESEND_API_KEY"] = "re_test"
-os.environ["RESEND_FROM_EMAIL"] = "Test <test@example.com>"
-os.environ["OPENWEATHER_API_KEY"] = "owm_test"
-os.environ.pop("GOOGLE_CLIENT_ID", None)
+from tests import TEMP_DIR  # noqa: E402  (must come first: sets the test environment)
 
 import app as app_module  # noqa: E402
 from config import DATABASE  # noqa: E402
@@ -21,6 +12,8 @@ PASSWORD = "Passw0rd123"
 
 
 def wipe_database():
+    # Safety net: never drop tables anywhere except the temporary test database.
+    assert str(DATABASE).startswith(TEMP_DIR), f"Refusing to wipe a non-test database: {DATABASE}"
     connection = connect_db()
     try:
         connection.execute("PRAGMA foreign_keys = OFF")
