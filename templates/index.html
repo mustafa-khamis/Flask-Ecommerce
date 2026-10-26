@@ -10,10 +10,19 @@
       <p class="hero-lead">LumaMarket is an online marketplace that brings buyers and independent sellers together in one place.</p>
       <p class="hero-lead">Buyers can look forward to finding useful things for everyday life, and sellers can set up their own account ready for listing products. Create a free account to get started.</p>
       <div class="button-row">
-        {# Signed-out visitors are asked to sign in first; signed-in users go to their own dashboard. #}
-        <a class="button button-primary button-large"
-           href="{{ url_for(dashboard_url(g.user.role)) if g.user else url_for('login') }}">Start selling</a>
-        <a class="button button-secondary button-large" href="{{ url_for('catalog') }}">Browse products</a>
+        {% if g.user and g.user.role == 'Buyer' %}
+          <a class="button button-primary button-large" href="{{ url_for('catalog') }}">Browse products</a>
+          <a class="button button-secondary button-large" href="{{ url_for('cart') }}">View cart{% if cart_count %} ({{ cart_count }}){% endif %}</a>
+        {% elif g.user and g.user.role == 'Seller' %}
+          <a class="button button-primary button-large" href="{{ url_for('product_new') }}">Add a product</a>
+          <a class="button button-secondary button-large" href="{{ url_for('seller_dashboard') }}">Manage products</a>
+        {% elif g.user and g.user.role == 'Admin' %}
+          <a class="button button-primary button-large" href="{{ url_for('admin_dashboard') }}">Manage users</a>
+          <a class="button button-secondary button-large" href="{{ url_for('admin_products') }}">Manage products</a>
+        {% else %}
+          <a class="button button-primary button-large" href="{{ url_for('login') }}">Start selling</a>
+          <a class="button button-secondary button-large" href="{{ url_for('catalog') }}">Browse products</a>
+        {% endif %}
       </div>
     </div>
 

@@ -43,6 +43,36 @@ class ShopBase(AppTestCase):
 
 
 class ProductTests(ShopBase):
+    def test_home_hero_actions_match_signed_in_role(self):
+        cases = (
+            (self.buyer, (("Browse products", 'href="/products"'), ("View cart", 'href="/cart"'))),
+            (self.seller, (("Add a product", 'href="/seller/products/new"'), ("Manage products", 'href="/seller/dashboard"'))),
+        )
+        for client, actions in cases:
+            hero = client.get("/").get_data(as_text=True).split('<section class="section products-section"', 1)[0]
+            for label, href in actions:
+                self.assertIn(label, hero)
+                self.assertIn(href, hero)
+            self.assertNotIn("Start selling", hero)
+
+        self.make_user("admin@example.com", "Admin", "Ada Admin")
+        admin = self.client_for("admin@example.com")
+        hero = admin.get("/").get_data(as_text=True).split('<section class="section products-section"', 1)[0]
+        self.assertIn('href="/admin/dashboard">Manage users</a>', hero)
+        self.assertIn('href="/admin/products">Manage products</a>', hero)
+
+    def test_admin_dashboard_links_live_user_and_product_counts(self):
+        self.make_user("admin@example.com", "Admin", "Ada Admin")
+        admin = self.client_for("admin@example.com")
+        self.add_product(name="Admin Dashboard Mug")
+
+        dashboard = admin.get("/admin/dashboard").get_data(as_text=True)
+        self.assertIn('href="/admin/dashboard#users-title">5</a>', dashboard)
+        self.assertIn('href="/admin/products">1</a>', dashboard)
+
+        products = admin.get("/admin/products").get_data(as_text=True)
+        self.assertIn("Admin Dashboard Mug", products)
+
     def test_seller_creates_product_and_it_appears_in_catalogue(self):
         pid = self.add_product()
         page = self.client.get("/products").get_data(as_text=True)

@@ -647,6 +647,10 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
+.stat dd a { color: inherit; text-decoration: none; }
+.stat dd a:hover,
+.stat dd a:focus-visible { text-decoration: underline; }
+.stat-strip.admin-summary dl { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 
 .filter-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem; }
 .field-inline label { margin-bottom: .25rem; font-size: .8125rem; }
@@ -711,6 +715,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 
 @media (max-width: 960px) {
   .stat-strip dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stat-strip.admin-summary dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .nav-user-name { display: none; }
 }
 
@@ -770,6 +775,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   .role-options,
   .account-types { grid-template-columns: 1fr; }
   .stat-strip dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-strip.admin-summary dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .site-footer-inner { flex-direction: column; align-items: flex-start; }
 }
 

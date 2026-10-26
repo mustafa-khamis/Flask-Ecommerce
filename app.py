@@ -432,6 +432,7 @@ def admin_dashboard():
         "admins": count_users("Admin"),
         "sellers": count_users("Seller"),
         "buyers": count_users("Buyer"),
+        "products": len(shop.all_products_for_admin()),
     }
     search = request.args.get("search", "").strip()
     role_filter = request.args.get("role", "")
