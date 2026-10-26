@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import re
 import sqlite3
 from functools import wraps
@@ -8,7 +9,7 @@ from pathlib import Path
 from flask import abort, g, redirect, request, session, url_for
 from werkzeug.security import generate_password_hash
 
-from config import DATABASE
+from config import CODE_MAX_ATTEMPTS, DATABASE, SECRET_KEY
 
 ROLES = ("Admin", "Seller", "Buyer")
 
@@ -76,6 +77,9 @@ def create_users_table(connection):
 def create_other_tables(connection):
     """Add everything after Stage 1. Safe to run on every start: nothing is dropped or rewritten."""
     columns = [row["name"] for row in connection.execute("PRAGMA table_info(users)")]
+    if "email_verified" not in columns:
+        # 1 for everyone who already exists, so nobody is locked out by this feature.
+        connection.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1")
     if "has_password" not in columns:
         # 0 means the account was created with Google and has no password of its own yet.
         connection.execute("ALTER TABLE users ADD COLUMN has_password INTEGER NOT NULL DEFAULT 1")
@@ -90,6 +94,20 @@ def create_other_tables(connection):
             used_at TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- 6-digit confirmation codes. purpose is 'signup' or 'email_change' (email = the address to confirm).
+        CREATE TABLE IF NOT EXISTS email_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            purpose TEXT NOT NULL CHECK (purpose IN ('signup', 'email_change')),
+            email TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_codes_user ON email_codes(user_id, created_at);
 
         -- One row per attempt (kind = 'reset' or 'login'); used to rate-limit.
         CREATE TABLE IF NOT EXISTS throttle (
@@ -223,15 +241,17 @@ def get_user_by_id(user_id):
         connection.close()
 
 
-def add_user(name, email, password, role, has_password=1):
+def add_user(name, email, password, role, has_password=1, email_verified=1):
+    """Create an account and return its id. Public sign-ups pass email_verified=0 until the code is entered."""
     connection = connect_db()
     try:
-        connection.execute(
-            """INSERT INTO users (name, email, password_hash, role, has_password)
-               VALUES (?, ?, ?, ?, ?)""",
-            (name, email.lower(), generate_password_hash(password), role, has_password),
+        cursor = connection.execute(
+            """INSERT INTO users (name, email, password_hash, role, has_password, email_verified)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (name, email.lower(), generate_password_hash(password), role, has_password, email_verified),
         )
         connection.commit()
+        return cursor.lastrowid
     finally:
         connection.close()
 
@@ -311,8 +331,8 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         user = get_user_by_id(session.get("user_id"))
-        if user is None or not user["is_active"]:
-            session.clear()
+        if user is None or not user["is_active"] or not user["email_verified"]:
+            session.pop("user_id", None)  # keep verify_user_id: someone mid-confirmation stays mid-confirmation
             return redirect(url_for("login"))
         g.user = user
         return view(*args, **kwargs)
@@ -429,8 +449,8 @@ def use_reset_token(token, new_password):
             connection.rollback()
             return False
         connection.execute(
-            """UPDATE users SET password_hash = ?, has_password = 1, updated_at = CURRENT_TIMESTAMP
-               WHERE id = ?""",
+            """UPDATE users SET password_hash = ?, has_password = 1, email_verified = 1,
+                      updated_at = CURRENT_TIMESTAMP WHERE id = ?""",  # opening the emailed link proves the address
             (generate_password_hash(new_password), row["user_id"]),
         )
         connection.execute(
@@ -439,5 +459,138 @@ def use_reset_token(token, new_password):
         )
         connection.commit()
         return True
+    finally:
+        connection.close()
+
+
+# --- Email confirmation codes ------------------------------------------------------
+# Only an HMAC of the code is stored (keyed with SECRET_KEY), never the code itself.
+def hash_code(user_id, purpose, code):
+    return hmac.new(SECRET_KEY.encode(), f"{purpose}:{user_id}:{code}".encode(), hashlib.sha256).hexdigest()
+
+
+def create_email_code(user_id, purpose, email, minutes):
+    """Make a fresh 6-digit code for this person; any older unused code stops working."""
+    code = f"{secrets.randbelow(10**6):06d}"
+    connection = connect_db()
+    try:
+        connection.execute("UPDATE email_codes SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL",
+                           (user_id,))
+        connection.execute(
+            """INSERT INTO email_codes (user_id, purpose, email, code_hash, expires_at)
+               VALUES (?, ?, ?, ?, datetime('now', ?))""",
+            (user_id, purpose, email.lower(), hash_code(user_id, purpose, code), f"+{minutes} minutes"))
+        connection.commit()
+    finally:
+        connection.close()
+    return code
+
+
+def pending_code(user_id):
+    """The newest unused code row (even if expired), or None."""
+    connection = connect_db()
+    try:
+        return connection.execute(
+            """SELECT *, expires_at <= datetime('now') AS expired,
+                      CAST((julianday('now') - julianday(created_at)) * 86400 AS INTEGER) AS age_seconds
+               FROM email_codes WHERE user_id = ? AND used_at IS NULL ORDER BY id DESC LIMIT 1""",
+            (user_id,)).fetchone()
+    finally:
+        connection.close()
+
+
+def seconds_since_last_code(user_id):
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """SELECT CAST((julianday('now') - julianday(MAX(created_at))) * 86400 AS INTEGER)
+               FROM email_codes WHERE user_id = ?""", (user_id,)).fetchone()
+        return row[0]  # None when no code was ever sent
+    finally:
+        connection.close()
+
+
+def check_email_code(user_id, submitted):
+    """Check a typed code. Returns (status, info) with status one of:
+    ok (info = the code row), wrong (info = tries left), expired, locked, none.
+    The attempt counter is updated in the same transaction, so guesses cannot be raced."""
+    submitted = submitted.strip()
+    connection = connect_db()
+    connection.isolation_level = None
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            """SELECT *, expires_at <= datetime('now') AS expired FROM email_codes
+               WHERE user_id = ? AND used_at IS NULL ORDER BY id DESC LIMIT 1""", (user_id,)).fetchone()
+        if row is None:
+            connection.execute("COMMIT")
+            return "none", None
+        if row["expired"]:
+            connection.execute("COMMIT")
+            return "expired", None
+        if row["attempts"] >= CODE_MAX_ATTEMPTS:
+            connection.execute("COMMIT")
+            return "locked", None
+        expected = row["code_hash"]
+        if re.fullmatch(r"\d{6}", submitted) and hmac.compare_digest(
+                expected, hash_code(user_id, row["purpose"], submitted)):
+            connection.execute("UPDATE email_codes SET used_at = CURRENT_TIMESTAMP WHERE id = ?", (row["id"],))
+            connection.execute("COMMIT")
+            return "ok", row
+        connection.execute("UPDATE email_codes SET attempts = attempts + 1 WHERE id = ?", (row["id"],))
+        connection.execute("COMMIT")
+        left = CODE_MAX_ATTEMPTS - row["attempts"] - 1
+        return ("wrong", left) if left > 0 else ("locked", None)
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    finally:
+        connection.close()
+
+
+def mark_email_verified(user_id):
+    connection = connect_db()
+    try:
+        connection.execute("UPDATE users SET email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (user_id,))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def change_email(user_id, new_email):
+    """Switch the account to a confirmed new address. Returns False if somebody else already uses it."""
+    connection = connect_db()
+    try:
+        connection.execute("UPDATE users SET email = ?, email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                           (new_email.lower(), user_id))
+        connection.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        connection.close()
+
+
+def remove_unconfirmed_account(email):
+    """Free an address that someone signed up with but never confirmed (such accounts cannot sign in)."""
+    connection = connect_db()
+    try:
+        connection.execute("DELETE FROM users WHERE email = ? AND email_verified = 0", (email.lower(),))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def take_over_unconfirmed_for_google(user_id):
+    """Google just proved this address, so an unconfirmed password account on it is not trusted:
+    confirm it, but throw away whatever password the (unproven) sign-up chose."""
+    connection = connect_db()
+    try:
+        connection.execute(
+            """UPDATE users SET email_verified = 1, has_password = 0, password_hash = ?,
+                      updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (generate_password_hash(secrets.token_urlsafe(32)), user_id))
+        connection.commit()
     finally:
         connection.close()

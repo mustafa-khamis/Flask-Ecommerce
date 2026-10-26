@@ -72,3 +72,31 @@ def send_reset_email(to, name, link, minutes):
     if not sent and os.environ.get("FLASK_DEBUG") == "1":
         print(f"[debug only] Password reset link for {to}: {link}")
     return sent
+
+
+def build_code_email(name, code, minutes):
+    """Return (text, html). The code is on its own line in the text version, with nothing after it."""
+    text = "\n".join([
+        f"Hello {name},",
+        "",
+        "Welcome to LumaMarket! Use this code to confirm your email address.",
+        f"It works for {minutes} minutes and can be used once.",
+        "If you did not create an account, you can ignore this email.",
+        "",
+        "Your confirmation code:",
+        code,
+    ])
+    html = (f"<p>Hello {escape(name)},</p>"
+            "<p>Welcome to LumaMarket! Use this code to confirm your email address.</p>"
+            f'<p style="font-size:32px;letter-spacing:8px;font-weight:700;font-family:monospace">{escape(code)}</p>'
+            f"<p>It works for {minutes} minutes and can be used once.</p>"
+            "<p>If you did not create an account, you can ignore this email.</p>")
+    return text, html
+
+
+def send_code_email(to, name, code, minutes):
+    text, html = build_code_email(name, code, minutes)
+    sent = send_email(to, f"{code} is your LumaMarket confirmation code", text, html)
+    if not sent and os.environ.get("FLASK_DEBUG") == "1":
+        print(f"[debug only] Confirmation code for {to}: {code}")
+    return sent

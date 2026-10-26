@@ -954,3 +954,7 @@ body.drawer-open { overflow: hidden; }
 .location-bar-problem { background: var(--color-warning-bg); border-color: #F0D49A; }
 .location-text > div p { margin: 0; }
 .location-reason { margin-top: .35rem !important; font-size: var(--text-sm); color: var(--color-text-muted); }
+
+/* 18. Email confirmation code ------------------------------------------------------------------ */
+.code-input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.75rem; letter-spacing: .5rem; text-align: center; }
+.resend-form { margin-top: .75rem; }

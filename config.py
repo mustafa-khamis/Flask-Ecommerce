@@ -46,3 +46,9 @@ GEOIP_ENABLED = os.environ.get("GEOIP_ENABLED", "1") == "1"
 # Behind a proxy (Render, Railway, nginx...) the real visitor IP arrives in X-Forwarded-For.
 # Only turn this on when such a proxy is really in front of the app, or visitors could fake their IP.
 TRUST_PROXY = os.environ.get("TRUST_PROXY", "") == "1" or bool(os.environ.get("RENDER"))
+
+# Sign-up confirmation by a 6-digit emailed code.
+CODE_MINUTES = 15            # how long a code works
+CODE_MAX_ATTEMPTS = 5        # wrong guesses before the code is burned
+CODE_RESEND_SECONDS = 60     # wait between emails to the same person
+CODE_RESENDS_PER_HOUR = 5

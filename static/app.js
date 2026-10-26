@@ -333,3 +333,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
   tryProvider(0);
 });
+
+// 9. Confirmation code page: only digits, submit as soon as 6 are typed, and count down the resend wait.
+document.addEventListener("DOMContentLoaded", function () {
+  var code = document.getElementById("code");
+  if (code) {
+    code.addEventListener("input", function () {
+      code.value = code.value.replace(/\D+/g, "").slice(0, 6);
+      if (code.value.length === 6) { code.form.requestSubmit(); }
+    });
+  }
+  var resend = document.querySelector("button[data-wait]");
+  if (resend) {
+    var left = Number(resend.dataset.wait);
+    resend.disabled = true;
+    var timer = setInterval(function () {
+      left -= 1;
+      if (left <= 0) { clearInterval(timer); resend.disabled = false; resend.textContent = "Send a new code"; }
+      else { resend.textContent = "Send a new code (in " + left + "s)"; }
+    }, 1000);
+  }
+});

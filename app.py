@@ -16,19 +16,21 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash
 
 from config import (
-    APP_BASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ENABLED, GOOGLE_REDIRECT_URI,
+    APP_BASE_URL, CODE_MINUTES, CODE_RESEND_SECONDS, CODE_RESENDS_PER_HOUR, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ENABLED, GOOGLE_REDIRECT_URI,
     MAX_IMAGES_PER_PRODUCT, MAX_UPLOAD_BYTES, PASSWORD_RESET_MINUTES, SECRET_KEY, SESSION_COOKIE_SECURE,
     TRUST_PROXY, UPLOAD_DIR,
 )
 import geolocation
 import shop
 import weather as weather_service
-from emailer import send_reset_email
+from emailer import send_code_email, send_reset_email
 from functions import (
-    ROLES, add_google_user, add_user, count_users, create_reset_token, find_valid_reset,
-    get_user_by_email, get_user_by_id, get_users, init_db, login_required, password_error,
-    role_required, throttle_clear, throttle_count, throttle_record, update_password,
-    update_profile, update_user, use_reset_token, valid_email,
+    ROLES, add_google_user, add_user, change_email, check_email_code, count_users, create_email_code,
+    create_reset_token, find_valid_reset, get_user_by_email, get_user_by_id, get_users, init_db,
+    login_required, mark_email_verified, password_error, pending_code, remove_unconfirmed_account,
+    role_required, seconds_since_last_code, take_over_unconfirmed_for_google, throttle_clear,
+    throttle_count, throttle_record, update_password, update_profile, update_user, use_reset_token,
+    valid_email,
 )
 
 app = Flask(__name__)
@@ -84,7 +86,7 @@ def load_current_user():
     # Lets public pages (home, sign in, errors) know who is signed in for the header.
     # Protected routes still check access with login_required and role_required.
     user = get_user_by_id(session["user_id"]) if "user_id" in session else None
-    g.user = user if user and user["is_active"] else None
+    g.user = user if user and user["is_active"] and user["email_verified"] else None
 
 
 CSRF_MESSAGE = "Your session expired or the form was not valid. Please reload the page and try again."
@@ -146,7 +148,8 @@ def register():
             errors.append("Passwords do not match.")
         if role not in ("Buyer", "Seller"):
             errors.append("Please select Buyer or Seller.")
-        if get_user_by_email(email):
+        existing = get_user_by_email(email)
+        if existing and existing["email_verified"]:
             errors.append("An account with that email already exists.")
 
         if errors:
@@ -154,13 +157,20 @@ def register():
                 flash(error, "error")
             return render_template("auth/register.html"), 400
 
+        # An earlier sign-up with this address that was never confirmed cannot sign in, so it is replaced.
+        remove_unconfirmed_account(email)
         try:
-            add_user(name, email, password, role)
+            user_id = add_user(name, email, password, role, email_verified=0)
         except sqlite3.IntegrityError:
             flash("An account with that email already exists.", "error")
             return render_template("auth/register.html"), 400
-        flash("Account created. You can now sign in.", "success")
-        return redirect(url_for("login"))
+        session.clear()
+        session["verify_user_id"] = user_id
+        sent = send_confirmation_code(get_user_by_id(user_id), "signup", email)
+        flash(f"We sent a 6-digit code to {email}. Enter it to finish creating your account." if sent else
+              "Your account was created, but we could not send the email right now. Press \u201cSend a new code\u201d to try again.",
+              "success" if sent else "error")
+        return redirect(url_for("confirm_email"))
     return render_template("auth/register.html")
 
 
@@ -177,6 +187,14 @@ def login():
             user["password_hash"], request.form.get("password", "")
         ):
             throttle_clear("login", throttle_key)
+            if not user["email_verified"]:
+                # Right password, but the address was never confirmed: send a code instead of signing in.
+                session.clear()
+                session["verify_user_id"] = user["id"]
+                if may_send_code(user["id"]):
+                    send_confirmation_code(user, "signup", user["email"])
+                flash("Please confirm your email address first. Enter the 6-digit code we sent you.", "info")
+                return redirect(url_for("confirm_email"))
             session.clear()
             session["user_id"] = user["id"]
             flash(f"Welcome back, {user['name']}.", "success")
@@ -185,6 +203,108 @@ def login():
         flash("Invalid email or password.", "error")
         return render_template("auth/login.html"), 401
     return render_template("auth/login.html")
+
+
+# --- Confirming an email address with a 6-digit code ------------------------------
+def send_confirmation_code(user, purpose, email):
+    """Make a code and email it. Returns True when Resend accepted the message."""
+    throttle_record("code-send", str(user["id"]))
+    code = create_email_code(user["id"], purpose, email, CODE_MINUTES)
+    sent = send_code_email(email, user["name"], code, CODE_MINUTES)
+    if sent:
+        app.logger.info("Confirmation code sent to %s (%s).", email, purpose)
+    else:
+        app.logger.error("Confirmation code to %s FAILED to send (see the Resend message above).", email)
+    return sent
+
+
+def may_send_code(user_id):
+    """False while the resend wait is running or the hourly limit is used up."""
+    since = seconds_since_last_code(user_id)
+    return ((since is None or since >= CODE_RESEND_SECONDS)
+            and throttle_count("code-send", str(user_id), 60) < CODE_RESENDS_PER_HOUR)
+
+
+def mask_email(email):
+    name, _, domain = email.partition("@")
+    return f"{name[:1]}{'*' * max(len(name) - 1, 2)}@{domain}"
+
+
+def code_subject():
+    """Who is confirming right now, as (user, newest unused code or None), or None if nobody is.
+
+    The user id comes from the signed session: it is only put there by a new sign-up, by a correct
+    password on an unconfirmed account, or by a signed-in user changing their email.
+    """
+    user = get_user_by_id(session.get("verify_user_id"))
+    if user is None or not user["is_active"]:
+        return None
+    row = pending_code(user["id"])
+    if not user["email_verified"]:
+        return user, row  # sign-up confirmation (no or expired code: the page offers a new one)
+    if row is not None and row["purpose"] == "email_change" and g.user and g.user["id"] == user["id"]:
+        return user, row  # a signed-in owner confirming a new address
+    return None
+
+
+def render_confirm(user, row, status=200):
+    since = seconds_since_last_code(user["id"])
+    wait = 0 if since is None else max(CODE_RESEND_SECONDS - since, 0)  # 0 seconds ago is NOT "never sent"
+    target = row["email"] if row else user["email"]
+    return render_template("auth/confirm_email.html", masked=mask_email(target), wait=wait, has_code=row is not None
+                           and not row["expired"], purpose=row["purpose"] if row else "signup",
+                           minutes=CODE_MINUTES), status
+
+
+@app.route("/confirm-email", methods=["GET", "POST"])
+def confirm_email():
+    subject = code_subject()
+    if subject is None:
+        flash("There is nothing to confirm. Sign in, or create an account.", "info")
+        return redirect(url_for("login"))
+    user, row = subject
+    if request.method == "POST":
+        status, info = check_email_code(user["id"], request.form.get("code", ""))
+        if status == "ok":
+            if info["purpose"] == "email_change":
+                if not change_email(user["id"], info["email"]):
+                    flash("That email address is already in use by another account.", "error")
+                    return redirect(url_for("profile"))
+                session.pop("verify_user_id", None)
+                flash("Your new email address is confirmed.", "success")
+                return redirect(url_for("profile"))
+            mark_email_verified(user["id"])
+            return finish_login(get_user_by_id(user["id"]), f"Email confirmed. Welcome to LumaMarket, {user['name']}!")
+        message = {
+            "wrong": f"That code is not right. You have {info} {'try' if info == 1 else 'tries'} left.",
+            "expired": f"That code has expired (codes work for {CODE_MINUTES} minutes). Send a new code.",
+            "locked": "Too many wrong attempts. Send a new code to try again.",
+            "none": "There is no active code. Send a new code.",
+        }[status]
+        flash(message, "error")
+        return render_confirm(user, pending_code(user["id"]), 400)
+    return render_confirm(user, row)
+
+
+@app.post("/confirm-email/resend")
+def confirm_email_resend():
+    subject = code_subject()
+    if subject is None:
+        return redirect(url_for("login"))
+    user, row = subject
+    since = seconds_since_last_code(user["id"])
+    if since is not None and since < CODE_RESEND_SECONDS:
+        flash(f"Please wait {CODE_RESEND_SECONDS - since} seconds before asking for another code.", "error")
+    elif not may_send_code(user["id"]):
+        flash("Too many codes requested. Please try again in an hour.", "error")
+    else:
+        purpose = row["purpose"] if row else "signup"
+        target = row["email"] if row else user["email"]
+        if send_confirmation_code(user, purpose, target):
+            flash(f"A new code was sent to {target}. Older codes no longer work.", "success")
+        else:
+            flash("We could not send the email right now. Please try again in a moment.", "error")
+    return redirect(url_for("confirm_email"))
 
 
 # --- Forgot / reset password -------------------------------------------------
@@ -287,10 +407,10 @@ def google_request(url, data=None, token=None):
     return None
 
 
-def finish_login(user):
+def finish_login(user, message=None):
     session.clear()
     session["user_id"] = user["id"]
-    flash(f"Welcome back, {user['name']}.", "success")
+    flash(message or f"Welcome back, {user['name']}.", "success")
     return redirect(url_for(dashboard_url(user["role"])))
 
 
@@ -345,6 +465,10 @@ def google_callback():
         if not user["is_active"]:
             flash("This account has been deactivated. Please contact an administrator.", "error")
             return redirect(url_for("login"))
+        if not user["email_verified"]:
+            # Google proved the address; the unproven sign-up's password is thrown away.
+            take_over_unconfirmed_for_google(user["id"])
+            user = get_user_by_id(user["id"])
         return finish_login(user)
 
     # New person: they still choose Buyer or Seller (Admin is never available).
@@ -404,6 +528,15 @@ def profile():
             flash("Please enter a valid name and email.", "error")
         elif other_user and other_user["id"] != g.user["id"]:
             flash("That email address is already in use.", "error")
+        elif email != g.user["email"].lower():
+            # A new address is only used after its owner enters the code we send there.
+            update_profile(g.user["id"], name, g.user["email"])
+            session["verify_user_id"] = g.user["id"]
+            sent = send_confirmation_code(g.user, "email_change", email)
+            flash(f"We sent a 6-digit code to {email}. Enter it to confirm the new address." if sent else
+                  "We could not send the email right now. Press \u201cSend a new code\u201d to try again.",
+                  "success" if sent else "error")
+            return redirect(url_for("confirm_email"))
         else:
             update_profile(g.user["id"], name, email)
             flash("Profile updated.", "success")

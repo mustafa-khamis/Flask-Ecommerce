@@ -52,13 +52,16 @@ New Google users choose Buyer or Seller (never Admin). They have no password (`h
 
 | Area | Routes | Who |
 |---|---|---|
-| Auth | `/register`, `/login`, `POST /logout`, `/forgot-password`, `/reset-password/<token>`, `/auth/google…` | public |
+| Auth | `/register`, `/confirm-email`, `POST /confirm-email/resend`, `/login`, `POST /logout`, `/forgot-password`, `/reset-password/<token>`, `/auth/google…` | public |
 | Profile | `/profile`, `POST /profile/password` | signed in |
 | Catalogue | `/products`, `/products/<id>` (image gallery), `/uploads/products/<file>` | public |
 | Seller | `/seller/dashboard`, `/seller/products/new`, `/seller/products/<id>/edit`, `POST …/status` | Seller (own products only) |
 | Buyer | `/cart`, `/cart/drawer`, `POST /cart/add`, `/cart/update/<id>`, `/cart/remove/<id>`, `/checkout`, `/orders`, `/orders/<id>` | Buyer |
 | Weather | `/weather`, `POST /weather/detect` | public |
 | Admin | `/admin/dashboard`, `POST /admin/users/<id>`, `POST /admin/admins`, `/admin/weather`, `/admin/products`, `POST /admin/products/<id>/choice` | Admin |
+
+### Email confirmation at sign-up
+Creating an account sends a **6-digit code** (Resend) to the address; the account cannot sign in until the code is entered at `/confirm-email`. Codes work for 15 minutes, once, allow 5 wrong tries, and only an HMAC of the code is stored. A new code can be requested after 60 seconds (5 per hour) and cancels the older one. Signing in with the right password on an unconfirmed account sends a fresh code instead of letting the user in. Accounts that existed before this feature, admin-created accounts and Google accounts count as confirmed. Changing the email on the profile page keeps the old address until the new one's code is entered. Registering again with an address that was never confirmed replaces that unconfirmed sign-up, and Google sign-in on such an address discards the unproven password. Resetting a password through the emailed link also confirms the address.
 
 ### Security measures
 Hashed passwords (Werkzeug scrypt); CSRF token on every POST; server-side role checks on every protected route; reset tokens are random, stored only as SHA-256 hashes, expire after 30 minutes, are single use (claimed atomically) and a new request cancels older links; the forgot-password answer is identical whether or not the email exists; reset requests are limited to 3 per email and 10 per IP per hour, sign-in to 10 failures per 15 minutes; password rules (8–128 chars, a letter and a number); image uploads are checked by their real bytes (PNG/JPG/GIF/WebP, ≤ 2 MB) and saved under random names; SQL uses parameters only; foreign keys and CHECK constraints are on; no-store cache headers so Back never shows a signed-out dashboard.
@@ -87,13 +90,15 @@ erDiagram
     orders ||--|{ order_items : contains
     products ||--o{ order_items : "sold as"
     users ||--o{ password_resets : requests
+    users ||--o{ email_codes : "confirms with"
     users |o--o{ weather_searches : "performs (optional)"
-    users { int id PK  text email UK  text password_hash  int has_password  text role  int is_active }
+    users { int id PK  text email UK  text password_hash  int has_password  int email_verified  text role  int is_active }
     products { int id PK  int seller_id FK  text name  int price_cents  int sale_price_cents  text sale_start  text sale_end  int stock  text image  int free_shipping  int is_choice  int is_active }
     product_images { int id PK  int product_id FK  text filename  int position }
     cart_items { int user_id PK,FK  int product_id PK,FK  int quantity }
     orders { int id PK  int buyer_id FK  int total_cents  text status  text shipping_name  text shipping_address }
     order_items { int id PK  int order_id FK  int product_id FK  int seller_id FK  text product_name  int unit_price_cents  int quantity }
+    email_codes { int id PK  int user_id FK  text purpose  text email  text code_hash  int attempts  text expires_at  text used_at }
     password_resets { int id PK  int user_id FK  text token_hash UK  text expires_at  text used_at }
     weather_searches { int id PK  int user_id FK  text search_type  text query  text place  int success  text error }
     throttle { int id PK  text kind  text key  text created_at }
@@ -125,7 +130,7 @@ The tests run on a temporary database and a temporary upload folder (set in `tes
 7. **Privacy-preserving wording** – "If an account exists, we sent a link" protects users from account probing.
 
 ## Known limitations
-- No email verification at registration, so someone could pre-register another person's address; Google sign-in then matches by email. Not in the required scope.
+- Email codes are 6 digits, so security rests on the 5-try limit and 15-minute expiry; an attacker who copied the database *and* `SECRET_KEY` could work out an unexpired code.
 - Sessions store only the user id, so changing a password does not sign out other devices.
 - The Resend sandbox sender only delivers to your own Resend account address until a domain is verified.
 - Accounts created with Google before this update are not flagged `has_password = 0`; they can still use **Forgot password** to set a password.

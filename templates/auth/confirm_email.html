@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Confirm your email | LumaMarket{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+{% block flashes %}{% endblock %}
+{% block content %}
+<div class="container auth-layout">
+  <section class="auth-card" aria-labelledby="confirm-title">
+    <header class="auth-header">
+      <h1 id="confirm-title">{{ 'Confirm your new email' if purpose == 'email_change' else 'Confirm your email' }}</h1>
+      <p>We sent a 6-digit code to <strong>{{ masked }}</strong>. It works for {{ minutes }} minutes. Check your spam folder if you do not see it.</p>
+    </header>
+
+    {% include "_flashes.html" %}
+
+    <form method="post" class="form" novalidate>{{ csrf_input() }}
+      <div class="field">
+        <label for="code">6-digit code</label>
+        <input id="code" name="code" class="code-input" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+               autocomplete="one-time-code" required autofocus placeholder="000000" aria-describedby="code-hint">
+        <p class="field-hint" id="code-hint">Type the six numbers from the email.</p>
+      </div>
+      <button class="button button-primary button-block" type="submit">Confirm</button>
+    </form>
+
+    <form method="post" action="{{ url_for('confirm_email_resend') }}" class="resend-form">{{ csrf_input() }}
+      <button class="button button-secondary button-block" type="submit" {% if wait %}data-wait="{{ wait }}"{% endif %}>
+        Send a new code{% if wait %} (in {{ wait }}s){% endif %}
+      </button>
+    </form>
+
+    <p class="auth-switch">
+      {% if purpose == 'email_change' %}<a href="{{ url_for('profile') }}">Cancel and keep my current email</a>
+      {% else %}Wrong address? <a href="{{ url_for('register') }}">Start again</a>{% endif %}
+    </p>
+  </section>
+</div>
+{% endblock %}
