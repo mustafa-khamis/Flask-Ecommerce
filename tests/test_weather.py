@@ -291,9 +291,128 @@ class IpLocationTests(AppTestCase):
             self.client.get("/weather", headers={"X-Forwarded-For": "41.186.1.1"})
         self.assertEqual(geo.call_args[0][0], "https://ipwho.is/")  # not the spoofed address
 
+    def test_forwarded_chain_is_used_for_the_lookup_when_a_proxy_is_trusted(self):
+        import app as app_module_
+        with mock.patch.object(app_module_, "TRUST_PROXY", True), \
+                mock.patch("geolocation.fetch_json", return_value=IP_ANSWER) as geo, \
+                mock.patch("weather.urllib.request.urlopen", return_value=fake_response(SAMPLE)):
+            self.client.get("/weather", headers={"X-Forwarded-For": "41.186.10.20, 172.68.1.1"})
+        self.assertEqual(geo.call_args_list[0][0][0], "https://ipwho.is/41.186.10.20")
+
     def test_privacy_note_is_shown_for_ip_based_locations(self):
         page = self.visit()[0].get_data(as_text=True)
         self.assertIn("is not stored", page)
+
+
+class ClearErrorAndBrowserFallbackTests(AppTestCase):
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(geolocation, "GEOIP_ENABLED", True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def page(self, path="/weather", ip=None, fetch=None):
+        kwargs = {"environ_overrides": {"REMOTE_ADDR": ip}} if ip else {}
+        with mock.patch("geolocation.fetch_json", side_effect=fetch or (lambda url: None)):
+            return self.client.get(path, **kwargs).get_data(as_text=True)
+
+    def test_private_address_reason_is_shown(self):
+        page = self.page(ip="10.0.0.5")
+        self.assertIn("Why:", page)
+        self.assertIn("private network address (10.0.0.5)", page)
+
+    def test_provider_failure_reason_names_each_service(self):
+        def fail(url):
+            geolocation.last_error = "HTTP 429 (free limit reached)"
+            return None
+        page = self.page(ip="41.186.10.20", fetch=fail)
+        self.assertIn("ipwho.is: HTTP 429 (free limit reached)", page)
+        self.assertIn("geojs.io: HTTP 429", page)
+
+    def test_failure_page_asks_the_browser_to_try(self):
+        page = self.page(ip="10.0.0.5")
+        self.assertIn("data-browser-locate", page)
+        self.assertIn("asking your browser", page)
+        self.assertIn('action="/weather/browser-location"', page)
+        self.assertIn('id="weather-form"', page)              # search form is always there as well
+
+    def test_browser_result_is_accepted_and_shows_that_citys_weather(self):
+        self.page(ip="10.0.0.5")
+        token = self.token(path="/weather")
+        response = self.client.post("/weather/browser-location", data={
+            "csrf_token": token, "city": "Kigali", "country": "rw", "lat": "-1.95", "lon": "30.06"})
+        self.assertEqual(response.status_code, 302)
+        with mock.patch("weather.urllib.request.urlopen", return_value=fake_response(SAMPLE)) as owm:
+            page = self.client.get("/weather").get_data(as_text=True)
+        self.assertIn("Weather in Kigali, RW", page)
+        self.assertIn("Detected from your internet connection", page)
+        self.assertIn("lat=-1.95", owm.call_args[0][0])
+        self.assertNotIn("Why:", page)
+
+    def test_bad_browser_values_are_rejected_with_a_clear_message(self):
+        self.page(ip="10.0.0.5")
+        token = self.token(path="/weather")
+        for bad in ({"city": "", "lat": "1", "lon": "1"}, {"city": "X", "lat": "200", "lon": "1"},
+                    {"city": "X", "lat": "abc", "lon": "1"}, {"city": "X", "lat": "inf", "lon": "1"}):
+            response = self.client.post("/weather/browser-location", data={"csrf_token": token, **bad})
+            self.assertIn("browser_failed=1", response.headers["Location"])
+        page = self.page("/weather?browser_failed=1", ip="10.0.0.5")
+        self.assertIn("Please search for your city below", page)
+        self.assertNotIn("data-browser-locate", page)          # no endless retry loop
+        self.assertIsNone(self.query("SELECT 1 FROM weather_searches WHERE query LIKE 'X%'") or None)
+
+    def test_browser_location_needs_csrf(self):
+        response = self.client.post("/weather/browser-location", data={"city": "Kigali", "lat": "1", "lon": "1"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_success_clears_the_old_error(self):
+        self.page(ip="10.0.0.5")
+        with mock.patch("geolocation.fetch_json", return_value=IP_ANSWER), \
+                mock.patch("weather.urllib.request.urlopen", return_value=fake_response(SAMPLE)):
+            token = self.token(path="/weather")
+            self.client.post("/weather/detect", data={"csrf_token": token})
+            page = self.client.get("/weather").get_data(as_text=True)
+        self.assertIn("Weather in Kigali", page)
+        self.assertNotIn("Why:", page)
+
+
+class ProviderFallbackTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(geolocation, "GEOIP_ENABLED", True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_second_provider_is_used_when_the_first_fails(self):
+        geojs = {"city": "Kigali", "country_code": "RW", "latitude": "-1.95", "longitude": "30.06"}
+        with mock.patch("geolocation.fetch_json", side_effect=[None, geojs]) as fetch:
+            place = geolocation.locate("41.186.10.20")
+        self.assertEqual((place["city"], place["country"], place["lat"]), ("Kigali", "RW", -1.95))
+        self.assertEqual([c[0][0] for c in fetch.call_args_list],
+                         ["https://ipwho.is/41.186.10.20", "https://get.geojs.io/v1/ip/geo/41.186.10.20.json"])
+
+    def test_an_answer_without_a_city_moves_on_to_the_next_provider(self):
+        no_city = {"success": True, "city": "", "latitude": 1, "longitude": 1}
+        good = {"city": "Huye", "country_code": "RW", "latitude": "-2.6", "longitude": "29.7"}
+        with mock.patch("geolocation.fetch_json", side_effect=[no_city, good]):
+            self.assertEqual(geolocation.locate("41.186.10.20")["city"], "Huye")
+
+    def test_all_providers_failing_returns_none_and_logs_why(self):
+        with mock.patch("geolocation.fetch_json", return_value=None), self.assertLogs("geolocation", "WARNING") as logs:
+            self.assertIsNone(geolocation.locate("41.186.10.20"))
+        self.assertTrue(any("gave nothing usable" in line for line in logs.output))
+
+    def test_private_address_is_logged_with_a_hint_about_the_proxy_setting(self):
+        with self.assertLogs("geolocation", "WARNING") as logs:
+            self.assertIsNone(geolocation.locate("10.1.2.3"))
+        self.assertIn("TRUST_PROXY", logs.output[0])
+
+    def test_visitor_is_the_first_public_address_in_the_forwarded_chain(self):
+        pick = geolocation.first_public_ip
+        self.assertEqual(pick("41.186.10.20, 172.68.1.1, 10.0.0.2", "10.0.0.2"), "41.186.10.20")
+        self.assertEqual(pick("10.0.0.9, 41.186.10.20", "10.0.0.2"), "41.186.10.20")   # skips private hops
+        self.assertEqual(pick("2c0f:eb68::1, 172.68.1.1", "10.0.0.2"), "2c0f:eb68::1")  # IPv6 visitor
+        self.assertEqual(pick("garbage, 10.0.0.1", "10.0.0.2"), "10.0.0.2")              # nothing usable
+        self.assertEqual(pick(None, "10.0.0.2"), "10.0.0.2")
 
 
 class ProxySupportTests(unittest.TestCase):

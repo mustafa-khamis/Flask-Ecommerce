@@ -521,14 +521,24 @@ def remember_location(city, country, lat, lon, source):
     session["weather_location"] = {"city": city, "country": country, "lat": lat, "lon": lon, "source": source}
 
 
+def visitor_ip():
+    """The visitor's address. Behind a trusted proxy chain it is the first public address in X-Forwarded-For."""
+    if TRUST_PROXY:
+        return geolocation.first_public_ip(request.headers.get("X-Forwarded-For"), request.remote_addr or "")
+    return request.remote_addr or ""
+
+
 def detect_location():
-    """Estimate the visitor's city from their IP address and remember it for this session."""
-    place = geolocation.locate(request.remote_addr or "")
+    """Estimate the visitor's city from their IP address and remember it for this session.
+    Returns the place or None; when None, g.location_error says why in plain words."""
+    place, g.location_error = geolocation.locate_with_reason(visitor_ip())
     session["location_tried"] = True
     if place:
         remember_location(place["city"], place["country"], place["lat"], place["lon"], "ip")
+        session.pop("location_error", None)
     else:
         session.pop("weather_location", None)
+        session["location_error"] = g.location_error
     return saved_location()
 
 
@@ -572,6 +582,7 @@ def weather():
     if place is None and not session.get("location_tried"):
         place = detect_location()
     context["location_failed"] = place is None and geolocation.GEOIP_ENABLED
+    context["location_error"] = session.get("location_error", "")
     if place:
         context["location"] = place
         context["show_form"] = request.args.get("change") == "1"
@@ -582,11 +593,27 @@ def weather():
     return render_template("weather.html", **context)
 
 
+@app.post("/weather/browser-location")
+def weather_browser_location():
+    """Fallback: the visitor's browser looked up its own location (same free services) and sends it here.
+
+    Used when the server could not do it, for example behind a hosting proxy. The values are checked
+    like any other input; a visitor can only change what their own weather page shows.
+    """
+    place = geolocation.clean_place(request.form)
+    if place is None:
+        session["location_error"] = (session.get("location_error", "") +
+                                     " Your browser's answer could not be used either.").strip()
+        return redirect(url_for("weather", browser_failed=1))
+    remember_location(place["city"], place["country"], place["lat"], place["lon"], "ip")
+    session.pop("location_error", None)
+    return redirect(url_for("weather"))
+
+
 @app.post("/weather/detect")
 def weather_detect():
     """"Use my current location": forget the chosen place and estimate it from the IP address again."""
-    if not detect_location():
-        flash("We could not work out your location. Please search for your city instead.", "info")
+    detect_location()  # on failure the weather page explains why and tries the browser instead
     return redirect(url_for("weather"))
 
 

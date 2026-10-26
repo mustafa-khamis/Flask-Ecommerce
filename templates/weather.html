@@ -30,11 +30,24 @@
     </div>
   </section>
   {% elif location_failed %}
-  <section class="location-bar" aria-label="Location detection">
-    <p class="location-text"><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg>
-      <span>We could not work out your location automatically. Search for your city below, or try again.</span></p>
+  {# The server could not place the visitor. Unless the browser already failed, app.js now asks the
+     visitor's own browser (data-browser-locate) and sends the result to /weather/browser-location. #}
+  <section class="location-bar location-bar-problem" aria-label="Location detection"
+           {% if not request.args.get('browser_failed') %}data-browser-locate{% endif %}>
+    <div class="location-text"><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg>
+      <div>
+        <p class="location-status" role="status" data-locate-status>
+          {% if request.args.get('browser_failed') %}We could not work out your location automatically. Please search for your city below.
+          {% else %}The server could not work out your location, so we are asking your browser&hellip;{% endif %}
+        </p>
+        {% if location_error %}<p class="location-reason"><strong>Why:</strong> <span data-locate-reason>{{ location_error }}</span></p>{% endif %}
+      </div>
+    </div>
     <form method="post" action="{{ url_for('weather_detect') }}">{{ csrf_input() }}
       <button class="button button-secondary button-small" type="submit">Try detecting again</button>
+    </form>
+    <form method="post" action="{{ url_for('weather_browser_location') }}" data-browser-location-form hidden>{{ csrf_input() }}
+      <input type="hidden" name="city"><input type="hidden" name="country"><input type="hidden" name="lat"><input type="hidden" name="lon">
     </form>
   </section>
   {% endif %}

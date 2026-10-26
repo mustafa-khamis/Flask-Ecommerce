@@ -951,3 +951,6 @@ body.drawer-open { overflow: hidden; }
 .panel-title { margin: 0 0 .75rem; font-weight: 600; }
 .privacy-note { margin-top: 1rem; }
 .weather-icon { display: block; margin: .5rem auto; }
+.location-bar-problem { background: var(--color-warning-bg); border-color: #F0D49A; }
+.location-text > div p { margin: 0; }
+.location-reason { margin-top: .35rem !important; font-size: var(--text-sm); color: var(--color-text-muted); }

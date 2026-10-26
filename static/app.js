@@ -266,3 +266,70 @@ document.addEventListener("DOMContentLoaded", function () {
     removeBoxes.forEach(function (box) { box.addEventListener("change", check); });
   }
 });
+
+// 8. Weather: if the server could not tell where the visitor is (for example behind a hosting
+// proxy), ask the visitor's own browser. It calls the same free services directly, so the answer
+// is about the visitor's own connection. On failure it says why, and the search form stays usable.
+document.addEventListener("DOMContentLoaded", function () {
+  var bar = document.querySelector("[data-browser-locate]");
+  if (!bar || !window.fetch) { return; }
+  var status = bar.querySelector("[data-locate-status]");
+  var form = bar.querySelector("[data-browser-location-form]");
+  var providers = [
+    { name: "ipwho.is", url: "https://ipwho.is/" },
+    { name: "geojs.io", url: "https://get.geojs.io/v1/ip/geo.json" }
+  ];
+  var problems = [];
+
+  function usable(data) {
+    if (!data || data.success === false || !data.city) { return null; }
+    var lat = parseFloat(data.latitude), lon = parseFloat(data.longitude);
+    if (!isFinite(lat) || !isFinite(lon)) { return null; }
+    return { city: data.city, country: data.country_code || "", lat: lat, lon: lon };
+  }
+
+  function giveUp() {
+    status.textContent = "We could not work out your location automatically. Please search for your city below.";
+    var why = bar.querySelector("[data-locate-reason]");
+    var browserWhy = " Your browser could not reach the location services either (" + problems.join("; ") +
+      "). An ad-blocker or privacy setting can cause this.";
+    if (why) { why.textContent += browserWhy; }
+    else {
+      var p = document.createElement("p");
+      p.className = "location-reason";
+      p.innerHTML = "<strong>Why:</strong> ";
+      p.appendChild(document.createTextNode(browserWhy.trim()));
+      status.parentNode.appendChild(p);
+    }
+  }
+
+  function tryProvider(index) {
+    if (index >= providers.length) { giveUp(); return; }
+    var provider = providers[index];
+    var controller = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (controller) { controller.abort(); } }, 6000);
+    fetch(provider.url, controller ? { signal: controller.signal } : {})
+      .then(function (response) {
+        if (!response.ok) { throw new Error("HTTP " + response.status); }
+        return response.json();
+      })
+      .then(function (data) {
+        clearTimeout(timer);
+        var place = usable(data);
+        if (!place) { throw new Error("no city for this address"); }
+        status.textContent = "Found " + place.city + ". Loading its weather…";
+        form.elements.city.value = place.city;
+        form.elements.country.value = place.country;
+        form.elements.lat.value = place.lat;
+        form.elements.lon.value = place.lon;
+        form.submit();
+      })
+      .catch(function (error) {
+        clearTimeout(timer);
+        problems.push(provider.name + ": " + (error.name === "AbortError" ? "timed out" : (error.message || "blocked")));
+        tryProvider(index + 1);
+      });
+  }
+
+  tryProvider(0);
+});
