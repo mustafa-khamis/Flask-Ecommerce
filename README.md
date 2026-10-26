@@ -30,7 +30,7 @@ The database (`EcommerceDB`) is created or upgraded automatically on start. The 
 | `TRUST_PROXY` | hosting | `1` when a proxy/host sits in front of the app so the real visitor IP is used. Turned on automatically on Render. |
 
 ### Weather for your current city (IP location)
-Opening `/weather` for the first time estimates the visitor's city from their IP address using [ipwho.is](https://ipwho.is) (HTTPS, no key) and shows that city's weather, with a **Change location** button (search by city or coordinates) and a **Use my current location** button to go back. The IP is sent to ipwho.is only for the lookup and is never stored; only the city and coordinates are kept in the visitor's session. The estimate is approximate (a VPN or mobile network may show another city). On your own computer the address is `127.0.0.1`, so the lookup uses your machine's public address instead. Behind a host such as Render the real visitor IP comes from `X-Forwarded-For`; `TRUST_PROXY` (automatic on Render) enables that.
+Opening `/weather` for the first time estimates the visitor's city from their IP address using [ipwho.is](https://ipwho.is) (HTTPS, no key) and shows that city's weather, with a **Change location** button (search by city name) and a **Use my current location** button to go back. The IP is sent to ipwho.is only for the lookup and is never stored; only the city and coordinates are kept in the visitor's session. The estimate is approximate (a VPN or mobile network may show another city). On your own computer the address is `127.0.0.1`, so the lookup uses your machine's public address instead. Behind a host such as Render the real visitor IP comes from `X-Forwarded-For`; `TRUST_PROXY` (automatic on Render) enables that.
 
 ### Resend (password reset emails)
 1. Create an account at resend.com, then **API Keys → Create API Key**; put it in `RESEND_API_KEY`.
@@ -117,7 +117,7 @@ The tests run on a temporary database and a temporary upload folder (set in `tes
 3. **Forgot password**: `/forgot-password` with your Resend-account email → open the email link → set a new password → reuse the same link (rejected) → wait 30 minutes or edit `expires_at` to see expiry. Try an unknown email: same message.
 4. **Seller**: add a product with an image, a sale price and dates; try price `0`, a `.txt` renamed to `.png`, and a sale price above the price (all rejected). Sign in as another Seller and open `/seller/products/<id>/edit` (403).
 5. **Buyer**: browse and search, add to cart, try a quantity above stock (limited), change quantities, check out (tick the simulated-payment box), see the confirmation; confirm the stock fell and the Seller dashboard lists the sale.
-6. **Weather** (no login): search `Kigali`, then coordinates `-1.9441`, `30.0619`; try an empty field, `Xyzzyq` (not found), and disconnect the network (error with retry).
+6. **Weather** (no login): search `Kigali`; try an empty field, `Xyzzyq` (not found), and disconnect the network (error with retry).
 7. **Admin**: open **Weather search history** for the searches and usage statistics; manage users on the dashboard.
 
 ## HCI design decisions

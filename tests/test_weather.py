@@ -37,6 +37,17 @@ class WeatherTests(AppTestCase):
         self.assertIn("No search yet", page.get_data(as_text=True))
         self.assertIn("data-loading-form", page.get_data(as_text=True))  # loading state hook
 
+    def test_search_form_offers_the_city_name_only(self):
+        page = self.client.get("/weather").get_data(as_text=True)
+        self.assertIn('id="city"', page)
+        for gone in ("Coordinates", 'id="lat"', 'id="lon"', "Latitude", "Longitude"):
+            self.assertNotIn(gone, page)
+        self.assertIn('name="mode" value="city"', page)
+        # even if someone opens an old coordinates link, the form still shows the city box
+        old_link = self.client.get("/weather?mode=coordinates").get_data(as_text=True)
+        self.assertIn('id="city"', old_link)
+        self.assertNotIn('id="lat"', old_link)
+
     def test_city_search_shows_all_required_fields(self):
         with mock.patch("weather.urllib.request.urlopen", return_value=fake_response(SAMPLE)) as opened:
             response = self.search("mode=city&city=Kigali")

@@ -6,7 +6,7 @@
     <div>
       <p class="eyebrow">Weather</p>
       <h1>{% if location %}Weather in {{ location.city }}{% if location.country %}, {{ location.country }}{% endif %}{% else %}Check the weather{% endif %}</h1>
-      <p>{% if location %}Current conditions for your location.{% else %}Search by city name or by latitude and longitude. No account needed.{% endif %}</p>
+      <p>{% if location %}Current conditions for your location.{% else %}Search for a city by name. No account needed.{% endif %}</p>
     </div>
   </header>
 
@@ -57,27 +57,28 @@
     <section class="panel" aria-labelledby="search-title">
       <h2 id="search-title" class="visually-hidden">{{ 'Change location' if location else 'Search' }}</h2>
       {% if location %}<p class="panel-title">Change location</p>{% endif %}
+      {# Coordinates search is switched off for now (kept here so it can be turned back on):
       <div class="weather-tabs" role="group" aria-label="Search type">
         <a class="button {{ 'button-primary' if mode == 'city' else 'button-secondary' }} button-small" href="{{ url_for('weather', change=1 if location else None) }}" {% if mode == 'city' %}aria-current="true"{% endif %}>City</a>
         <a class="button {{ 'button-primary' if mode == 'coordinates' else 'button-secondary' }} button-small" href="{{ url_for('weather', mode='coordinates', change=1 if location else None) }}" {% if mode == 'coordinates' %}aria-current="true"{% endif %}>Coordinates</a>
       </div>
+      #}
       <form method="get" class="form" id="weather-form" data-loading-form>
-        <input type="hidden" name="mode" value="{{ mode }}">
-        {% if mode == 'city' %}
-          <div class="field">
-            <label for="city">City name</label>
-            <input id="city" name="city" required minlength="2" maxlength="100" value="{{ form.get('city', '') }}" placeholder="e.g. Kigali" autofocus>
-          </div>
-        {% else %}
-          <div class="field">
-            <label for="lat">Latitude (-90 to 90)</label>
-            <input id="lat" name="lat" required inputmode="decimal" value="{{ form.get('lat', '') }}" placeholder="e.g. -1.9441" autofocus>
-          </div>
-          <div class="field">
-            <label for="lon">Longitude (-180 to 180)</label>
-            <input id="lon" name="lon" required inputmode="decimal" value="{{ form.get('lon', '') }}" placeholder="e.g. 30.0619">
-          </div>
-        {% endif %}
+        <input type="hidden" name="mode" value="city">
+        <div class="field">
+          <label for="city">City name</label>
+          <input id="city" name="city" required minlength="2" maxlength="100" value="{{ form.get('city', '') }}" placeholder="e.g. Kigali" autofocus>
+        </div>
+        {# Coordinates fields (switched off):
+        <div class="field">
+          <label for="lat">Latitude (-90 to 90)</label>
+          <input id="lat" name="lat" required inputmode="decimal" value="{{ form.get('lat', '') }}" placeholder="e.g. -1.9441" autofocus>
+        </div>
+        <div class="field">
+          <label for="lon">Longitude (-180 to 180)</label>
+          <input id="lon" name="lon" required inputmode="decimal" value="{{ form.get('lon', '') }}" placeholder="e.g. 30.0619">
+        </div>
+        #}
         <button class="button button-primary button-block" type="submit" data-loading-text="Searching&hellip;">Get weather</button>
         <p class="weather-loading" role="status">Contacting the weather service&hellip;</p>
       </form>
