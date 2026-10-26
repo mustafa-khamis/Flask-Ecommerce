@@ -72,6 +72,9 @@ Hashed passwords (Werkzeug scrypt); CSRF token on every POST; server-side role c
 - **Add to cart** buttons (with a cart icon) are on every product card and product page. For Buyers the item is added in the background and a **side cart** slides in with *Continue to checkout* and *Continue shopping*, so the page never jumps away. Quantity and Remove work inside the side cart. It is keyboard accessible (focus is moved in and kept inside, Esc closes, focus returns to the button) and without JavaScript the same forms fall back to the full cart page.
 - Screenshots of these screens (taken from a throw-away demo database) are in `docs/screenshots/`.
 
+### Phones and small screens
+Below 861 px wide the header becomes the logo, a cart shortcut with its item count (Buyers) and a **Menu** button; the links open as a full-width list with large touch targets, Esc or a tap outside closes it, and without JavaScript the links simply stay visible. Tables turn into stacked cards, forms and grids go to one column, and tap targets are at least 44 px. Checked in Chrome at 360, 390 and 768 px on every page for every role: no sideways scrolling.
+
 ### Pricing and promotions
 Prices are whole cents. A product has a regular price and an optional sale price (must be lower) with optional start/end dates (inclusive). The sale applies only while valid and inside its dates; the discount percentage is `round((regular − sale) / regular × 100)` and is hidden if it would be under 1%. The cart, checkout and order totals are computed on the server from the database; orders store the price actually paid.
 

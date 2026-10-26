@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700&display=swap">
+  <script>document.documentElement.classList.add("js");</script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </head>
@@ -23,6 +24,7 @@
     <symbol id="i-trending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
     <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
   </defs>
@@ -35,7 +37,19 @@
       <span class="brand-name">LumaMarket</span>
     </a>
 
-    <nav class="site-nav" aria-label="Main navigation">
+    <div class="header-tools">
+      {% if g.user and g.user.role == 'Buyer' %}
+      <a class="header-cart" href="{{ url_for('cart') }}" data-open-cart aria-haspopup="dialog" aria-label="Cart">
+        <svg class="icon" aria-hidden="true"><use href="#i-cart"/></svg>
+        <span class="cart-badge" data-cart-count {% if not cart_count %}hidden{% endif %}><span class="visually-hidden">Items in cart: </span>{{ cart_count }}</span>
+      </a>
+      {% endif %}
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg><span>Menu</span>
+      </button>
+    </div>
+
+    <nav class="site-nav" id="site-nav" aria-label="Main navigation">
       <a class="nav-link" href="{{ url_for('catalog') }}" {% if request.endpoint in ('catalog', 'product_detail') %}aria-current="page"{% endif %}>Products</a>
       <a class="nav-link" href="{{ url_for('weather') }}" {% if request.endpoint == 'weather' %}aria-current="page"{% endif %}>Weather</a>
       {% if g.user and g.user.role == 'Buyer' %}

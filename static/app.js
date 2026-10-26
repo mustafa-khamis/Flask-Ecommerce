@@ -354,3 +354,28 @@ document.addEventListener("DOMContentLoaded", function () {
     }, 1000);
   }
 });
+
+// 10. Mobile menu: the Menu button opens and closes the header links (they stay visible without JavaScript).
+document.addEventListener("DOMContentLoaded", function () {
+  var button = document.querySelector(".nav-toggle");
+  var nav = document.getElementById("site-nav");
+  if (!button || !nav) { return; }
+  button.hidden = false;
+  var label = button.querySelector("span");
+  var icon = button.querySelector("use");
+
+  function setOpen(open) {
+    nav.classList.toggle("is-open", open);
+    button.setAttribute("aria-expanded", String(open));
+    label.textContent = open ? "Close" : "Menu";
+    icon.setAttribute("href", open ? "#i-x" : "#i-menu");
+  }
+  button.addEventListener("click", function () { setOpen(button.getAttribute("aria-expanded") !== "true"); });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && nav.classList.contains("is-open")) { setOpen(false); button.focus(); }
+  });
+  document.addEventListener("click", function (event) {      // a tap outside the menu closes it
+    if (nav.classList.contains("is-open") && !event.target.closest(".site-header")) { setOpen(false); }
+  });
+  window.matchMedia("(min-width: 861px)").addEventListener("change", function () { setOpen(false); });
+});

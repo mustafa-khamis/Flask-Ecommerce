@@ -161,6 +161,25 @@ class ProductTests(ShopBase):
         self.assertNotIn("Plain Mug", page)
 
 
+class MobileHeaderTests(ShopBase):
+    def test_header_has_a_menu_button_that_controls_the_nav(self):
+        page = self.buyer.get("/products").get_data(as_text=True)
+        self.assertIn('class="nav-toggle"', page)
+        self.assertIn('aria-controls="site-nav"', page)
+        self.assertIn('id="site-nav"', page)
+        self.assertIn('aria-expanded="false"', page)
+
+    def test_menu_button_is_hidden_until_javascript_runs_so_links_never_disappear(self):
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertRegex(page, r'<button class="nav-toggle"[^>]*\bhidden\b')
+        self.assertIn('document.documentElement.classList.add("js")', page)
+
+    def test_buyers_get_a_cart_shortcut_next_to_the_menu_button(self):
+        self.assertIn("header-cart", self.buyer.get("/products").get_data(as_text=True))
+        for client in (self.client, self.seller):
+            self.assertNotIn("header-cart", client.get("/products").get_data(as_text=True))
+
+
 class ImageSniffingTests(AppTestCase):
     def test_real_types_are_recognised(self):
         self.assertEqual(shop.image_extension(PNG), ".png")
