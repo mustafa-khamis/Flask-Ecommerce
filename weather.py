@@ -58,7 +58,7 @@ def request_weather(params):
             return json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 404:
-            raise WeatherError("not_found", "We could not find that place. Check the spelling or try coordinates.") from None
+            raise WeatherError("not_found", "We could not find that place. Check the spelling and try again.") from None
         if error.code == 429:
             raise WeatherError("service", "The weather service is busy right now. Please try again in a minute.") from None
         print(f"OpenWeather returned HTTP {error.code}")
