@@ -1,17 +1,30 @@
 {% extends "base.html" %}
-{% from "_macros.html" import price_block, stock_label %}
+{% from "_macros.html" import price_block, stock_label, badges, add_to_cart %}
 {% block title %}{{ product.name }} | LumaMarket{% endblock %}
 {% block content %}
 {% set info = price_info(product) %}
 <div class="container page">
   <p class="breadcrumb"><a href="{{ url_for('catalog') }}">&larr; All products</a></p>
   <div class="product-detail">
-    <div class="product-detail-image">
-      {% if product.image %}<img src="{{ url_for('product_image', filename=product.image) }}" alt="{{ product.name }}">
-      {% else %}<span class="product-image-empty">No image</span>{% endif %}
+    <div class="gallery">
+      <div class="product-detail-image">
+        {% if product.image %}<img id="gallery-main" src="{{ url_for('product_image', filename=product.image) }}" alt="{{ product.name }}, image 1">
+        {% else %}<span class="product-image-empty">No image</span>{% endif %}
+      </div>
+      {% if images | length > 1 %}
+      <ul class="gallery-thumbs" aria-label="Product images">
+        {% for img in images %}
+          <li><a href="{{ url_for('product_image', filename=img.filename) }}" data-gallery-thumb data-alt="{{ product.name }}, image {{ loop.index }}"
+                 {% if loop.first %}aria-current="true"{% endif %}>
+            <img src="{{ url_for('product_image', filename=img.filename) }}" alt="Show image {{ loop.index }} of {{ images | length }}" loading="lazy">
+          </a></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </div>
     <div class="product-detail-info">
       {% if not product.is_active %}<p class="alert alert-info"><span class="alert-icon" aria-hidden="true"></span><span>This product is hidden from buyers.</span></p>{% endif %}
+      {{ badges(product, 6) }}
       <h1>{{ product.name }}</h1>
       <p class="product-seller">Sold by {{ product.seller_name }}</p>
       {{ price_block(product) }}
@@ -22,13 +35,13 @@
 
       {% if g.user and g.user.role == 'Buyer' %}
         {% if product.is_active and product.stock > 0 %}
-        <form method="post" action="{{ url_for('cart_add') }}" class="buy-form">{{ csrf_input() }}
+        <form method="post" action="{{ url_for('cart_add') }}" class="buy-form" data-cart-add>{{ csrf_input() }}
           <input type="hidden" name="product_id" value="{{ product.id }}">
           <div class="field field-inline">
             <label for="quantity">Quantity</label>
             <input id="quantity" name="quantity" type="number" min="1" max="{{ [product.stock, 99] | min }}" value="1" required>
           </div>
-          <button class="button button-primary" type="submit">Add to cart</button>
+          <button class="button button-primary" type="submit"><svg class="icon" aria-hidden="true"><use href="#i-cart"/></svg>Add to cart</button>
         </form>
         {% else %}<p class="field-hint">This product can't be bought right now.</p>{% endif %}
       {% elif not g.user %}

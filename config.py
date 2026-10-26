@@ -36,5 +36,6 @@ OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "")
 
 # Product images are saved here (inside static/ so Flask can serve them).
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", BASE_DIR / "static" / "uploads" / "products"))
-MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024   # per image
+MAX_IMAGES_PER_PRODUCT = 6
 CURRENCY = os.environ.get("CURRENCY", "$")

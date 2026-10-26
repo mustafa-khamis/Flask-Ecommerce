@@ -9,7 +9,10 @@
       <h1>User management</h1>
       <p>Review registered accounts, change account types and activate or deactivate users.</p>
     </div>
-    <a class="button button-secondary" href="{{ url_for('admin_weather') }}">Weather search history</a>
+    <div class="button-row">
+      <a class="button button-secondary" href="{{ url_for('admin_products') }}">Product badges</a>
+      <a class="button button-secondary" href="{{ url_for('admin_weather') }}">Weather search history</a>
+    </div>
   </header>
 
   <section class="stat-strip" aria-label="Account summary">

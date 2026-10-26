@@ -16,7 +16,7 @@ from werkzeug.security import check_password_hash
 
 from config import (
     APP_BASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ENABLED, GOOGLE_REDIRECT_URI,
-    MAX_UPLOAD_BYTES, PASSWORD_RESET_MINUTES, SECRET_KEY, SESSION_COOKIE_SECURE, UPLOAD_DIR,
+    MAX_IMAGES_PER_PRODUCT, MAX_UPLOAD_BYTES, PASSWORD_RESET_MINUTES, SECRET_KEY, SESSION_COOKIE_SECURE, UPLOAD_DIR,
 )
 import shop
 import weather as weather_service
@@ -33,7 +33,7 @@ app.secret_key = SECRET_KEY
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = SESSION_COOKIE_SECURE
-app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES + 512 * 1024  # image plus the other form fields
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES * MAX_IMAGES_PER_PRODUCT + 512 * 1024  # all images plus other fields
 init_db()
 
 
@@ -61,6 +61,8 @@ app.jinja_env.globals["google_enabled"] = GOOGLE_ENABLED
 app.jinja_env.filters["date"] = format_date
 app.jinja_env.filters["money"] = shop.money
 app.jinja_env.globals["price_info"] = shop.price_info
+app.jinja_env.globals["product_badges"] = shop.product_badges
+app.jinja_env.globals["MAX_IMAGES"] = MAX_IMAGES_PER_PRODUCT
 
 
 @app.context_processor
@@ -532,6 +534,24 @@ def admin_weather():
     return render_template("dashboards/admin_weather.html", stats=weather_service.usage_stats(),
                            searches=weather_service.recent_searches())
 
+
+@app.route("/admin/products")
+@role_required("Admin")
+def admin_products():
+    return render_template("dashboards/admin_products.html", products=shop.all_products_for_admin())
+
+
+@app.post("/admin/products/<int:product_id>/choice")
+@role_required("Admin")
+def admin_product_choice(product_id):
+    product = shop.get_product(product_id)
+    if product is None:
+        abort(404)
+    award = request.form.get("choice") == "1"
+    shop.set_product_choice(product_id, award)
+    flash(f"{product['name']} {'now has' if award else 'no longer has'} the LumaMarket's Choice badge.", "success")
+    return redirect(url_for("admin_products"))
+
 @app.route("/seller/dashboard")
 @role_required("Seller")
 def seller_dashboard():
@@ -573,42 +593,44 @@ def product_detail(product_id):
     is_owner = bool(g.user and (g.user["id"] == product["seller_id"] or g.user["role"] == "Admin"))
     if not product["is_active"] and not is_owner:
         abort(404)
-    return render_template("shop/product.html", product=product, is_owner=is_owner)
+    return render_template("shop/product.html", product=product, is_owner=is_owner,
+                           images=shop.product_images(product_id))
 
 
 # --- Seller: product management ------------------------------------------------
-def product_form_data():
-    """Read the product form; returns (values, errors, new_image_filename)."""
+def product_form_data(already_have=0):
+    """Read the product form; returns (values, errors, new_image_filenames)."""
     values, errors = shop.validate_product_form(request.form)
-    image = None
-    upload = request.files.get("image")
-    if upload and upload.filename:
-        try:
-            image = shop.save_image(upload)
-        except ValueError as problem:
-            errors.append(str(problem))
-    return values, errors, image
+    images, image_errors = shop.save_images(request.files.getlist("images"), already_have)
+    return values, errors + image_errors, images
 
 
 def form_defaults():
-    return {key: request.form.get(key, "") for key in
+    form = {key: request.form.get(key, "") for key in
             ("name", "description", "price", "stock", "sale_price", "sale_start", "sale_end")}
+    form["free_shipping"] = request.form.get("free_shipping", "")
+    return form
+
+
+def discard(filenames):
+    for filename in filenames:
+        shop.delete_image(filename)
 
 
 @app.route("/seller/products/new", methods=["GET", "POST"])
 @role_required("Seller")
 def product_new():
     if request.method == "POST":
-        values, errors, image = product_form_data()
+        values, errors, images = product_form_data()
         if errors:
-            shop.delete_image(image)
+            discard(images)
             for error in errors:
                 flash(error, "error")
-            return render_template("seller/product_form.html", product=None, form=form_defaults()), 400
-        product_id = shop.create_product(g.user["id"], values, image)
+            return render_template("seller/product_form.html", product=None, images=[], form=form_defaults()), 400
+        product_id = shop.create_product(g.user["id"], values, images)
         flash("Product created.", "success")
         return redirect(url_for("product_detail", product_id=product_id))
-    return render_template("seller/product_form.html", product=None, form={})
+    return render_template("seller/product_form.html", product=None, images=[], form={})
 
 
 def own_product_or_404(product_id):
@@ -620,20 +642,30 @@ def own_product_or_404(product_id):
     return product
 
 
+def id_list(name):
+    return [int(value) for value in request.form.getlist(name) if value.isdigit()]
+
+
 @app.route("/seller/products/<int:product_id>/edit", methods=["GET", "POST"])
 @role_required("Seller")
 def product_edit(product_id):
     product = own_product_or_404(product_id)
+    current_images = shop.product_images(product_id)
     if request.method == "POST":
-        values, errors, image = product_form_data()
+        remove_ids = [i for i in id_list("remove_image") if i in {img["id"] for img in current_images}]
+        keeping = len(current_images) - len(remove_ids)
+        values, errors, new_images = product_form_data(already_have=keeping)
         if errors:
-            shop.delete_image(image)
+            discard(new_images)
             for error in errors:
                 flash(error, "error")
-            return render_template("seller/product_form.html", product=product, form=form_defaults()), 400
-        if shop.update_product(product_id, g.user["id"], values, image or product["image"]):
-            if image:
-                shop.delete_image(product["image"])
+            return render_template("seller/product_form.html", product=product, images=current_images,
+                                   form=form_defaults()), 400
+        cover = request.form.get("cover_image", "")
+        cover_id = int(cover) if cover.isdigit() and int(cover) not in remove_ids else None
+        updated, removed = shop.update_product(product_id, g.user["id"], values, new_images, remove_ids, cover_id)
+        discard(removed)
+        if updated:
             flash("Product updated.", "success")
         return redirect(url_for("product_detail", product_id=product_id))
     form = {
@@ -641,8 +673,9 @@ def product_edit(product_id):
         "price": f"{product['price_cents'] / 100:.2f}", "stock": product["stock"],
         "sale_price": f"{product['sale_price_cents'] / 100:.2f}" if product["sale_price_cents"] else "",
         "sale_start": product["sale_start"] or "", "sale_end": product["sale_end"] or "",
+        "free_shipping": "1" if product["free_shipping"] else "",
     }
-    return render_template("seller/product_form.html", product=product, form=form)
+    return render_template("seller/product_form.html", product=product, images=current_images, form=form)
 
 
 @app.post("/seller/products/<int:product_id>/status")
@@ -660,15 +693,34 @@ def quantity_from_form(default=1):
     return shop.parse_whole_number(request.form.get("quantity", default), 0, shop.MAX_CART_QUANTITY)
 
 
+def wants_json():
+    """The cart drawer sends this header; plain form posts (no JavaScript) get a normal redirect."""
+    return request.headers.get("X-Requested-With") == "fetch"
+
+
+def drawer_response(message=None, ok=True, status=200):
+    current = shop.get_cart(g.user["id"])
+    html = render_template("shop/_cart_drawer.html", cart=current, message=message, ok=ok)
+    return {"ok": ok, "message": message, "count": current["count"], "html": html}, status
+
+
+@app.get("/cart/drawer")
+@role_required("Buyer")
+def cart_drawer():
+    return drawer_response()
+
+
 @app.post("/cart/add")
 @role_required("Buyer")
 def cart_add():
     quantity = quantity_from_form()
     product_id = shop.parse_whole_number(request.form.get("product_id", ""), 1, 2**31)
     if not quantity or not product_id:
-        flash(f"Choose a quantity from 1 to {shop.MAX_CART_QUANTITY}.", "error")
-        return redirect(request.referrer or url_for("catalog"))
-    ok, message = shop.add_to_cart(g.user["id"], product_id, quantity)
+        message, ok = f"Choose a quantity from 1 to {shop.MAX_CART_QUANTITY}.", False
+    else:
+        ok, message = shop.add_to_cart(g.user["id"], product_id, quantity)
+    if wants_json():
+        return drawer_response(message, ok, 200 if ok else 400)
     flash(message, "success" if ok else "error")
     return redirect(url_for("cart") if ok else (request.referrer or url_for("catalog")))
 
@@ -684,16 +736,22 @@ def cart():
 def cart_update(product_id):
     quantity = quantity_from_form(default=-1)
     if quantity is None:
-        flash(f"Enter a quantity from 0 to {shop.MAX_CART_QUANTITY}.", "error")
+        message, ok = f"Enter a quantity from 0 to {shop.MAX_CART_QUANTITY}.", False
     else:
-        flash(shop.set_cart_quantity(g.user["id"], product_id, quantity), "success")
+        message, ok = shop.set_cart_quantity(g.user["id"], product_id, quantity), True
+    if wants_json():
+        return drawer_response(message, ok, 200 if ok else 400)
+    flash(message, "success" if ok else "error")
     return redirect(url_for("cart"))
 
 
 @app.post("/cart/remove/<int:product_id>")
 @role_required("Buyer")
 def cart_remove(product_id):
-    flash(shop.set_cart_quantity(g.user["id"], product_id, 0), "success")
+    message = shop.set_cart_quantity(g.user["id"], product_id, 0)
+    if wants_json():
+        return drawer_response(message)
+    flash(message, "success")
     return redirect(url_for("cart"))
 
 

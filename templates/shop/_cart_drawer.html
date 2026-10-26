@@ -1,0 +1,60 @@
+{# Contents of the side cart. Rendered on the server so prices, stock and totals are always authoritative. #}
+<div class="drawer-header">
+  <h2 id="drawer-title">Your cart{% if cart.count %} <span class="drawer-count">({{ cart.count }})</span>{% endif %}</h2>
+  <button type="button" class="drawer-close" data-drawer-close aria-label="Close cart"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+</div>
+
+{% if message %}
+<p class="drawer-message {{ 'is-ok' if ok else 'is-error' }}" role="{{ 'status' if ok else 'alert' }}">
+  <svg class="icon" aria-hidden="true"><use href="#{{ 'i-check' if ok else 'i-x' }}"/></svg>{{ message }}
+</p>
+{% endif %}
+
+{% if cart.lines %}
+<ul class="drawer-items">
+  {% for line in cart.lines %}
+    {% set p = line.product %}
+    <li class="drawer-item">
+      <a class="drawer-thumb" href="{{ url_for('product_detail', product_id=p.id) }}">
+        {% if p.image %}<img src="{{ url_for('product_image', filename=p.image) }}" alt="">{% else %}<span class="product-image-empty">No image</span>{% endif %}
+      </a>
+      <div class="drawer-item-info">
+        <a class="drawer-item-name" href="{{ url_for('product_detail', product_id=p.id) }}">{{ p.name }}</a>
+        <p class="drawer-item-price">{{ line.price.current_cents | money }}{% if line.price.on_sale %} <s class="price-was">{{ line.price.regular_cents | money }}</s>{% endif %}</p>
+        {% if line.issue %}<p class="stock stock-out">{{ line.issue }}</p>{% endif %}
+        <div class="drawer-item-controls">
+          <form method="post" action="{{ url_for('cart_update', product_id=p.id) }}" data-cart-form data-autosubmit>{{ csrf_input() }}
+            <label class="visually-hidden" for="drawer-qty-{{ p.id }}">Quantity of {{ p.name }}</label>
+            <input id="drawer-qty-{{ p.id }}" class="qty-input" name="quantity" type="number" min="0" max="{{ [p.stock, 99] | min }}" value="{{ line.quantity }}" required>
+            <button class="button button-secondary button-small" type="submit">Update</button>
+          </form>
+          <form method="post" action="{{ url_for('cart_remove', product_id=p.id) }}" data-cart-form>{{ csrf_input() }}
+            <button class="text-button" type="submit">Remove<span class="visually-hidden"> {{ p.name }}</span></button>
+          </form>
+        </div>
+      </div>
+      <p class="drawer-line-total">{{ line.line_total | money }}</p>
+    </li>
+  {% endfor %}
+</ul>
+<div class="drawer-footer">
+  <p class="drawer-subtotal"><span>Subtotal</span><strong>{{ cart.total_cents | money }}</strong></p>
+  <p class="field-hint">Delivery details and the simulated payment come next.</p>
+  <div class="drawer-actions">
+    {% if cart.has_problems %}
+      <a class="button button-primary button-block" href="{{ url_for('cart') }}">Fix items to check out</a>
+    {% else %}
+      <a class="button button-primary button-block" href="{{ url_for('checkout') }}">Continue to checkout</a>
+    {% endif %}
+    <button type="button" class="button button-secondary button-block" data-drawer-close>Continue shopping</button>
+  </div>
+  <a class="text-link drawer-viewcart" href="{{ url_for('cart') }}">View full cart</a>
+</div>
+{% else %}
+<div class="drawer-empty">
+  <svg class="icon icon-xl" aria-hidden="true"><use href="#i-cart"/></svg>
+  <h3>Your cart is empty</h3>
+  <p>Add something you like and it will show up here.</p>
+  <button type="button" class="button button-primary" data-drawer-close>Continue shopping</button>
+</div>
+{% endif %}

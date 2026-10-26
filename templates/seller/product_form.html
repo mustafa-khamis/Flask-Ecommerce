@@ -44,12 +44,36 @@
           </div>
         </div>
       </fieldset>
-      <div class="field">
-        <label for="image">Product image{{ ' (leave empty to keep the current one)' if editing and product.image }}</label>
-        <p class="field-hint">PNG, JPG, GIF or WebP, up to 2 MB.</p>
-        {% if editing and product.image %}<img class="form-thumb" src="{{ url_for('product_image', filename=product.image) }}" alt="Current image">{% endif %}
-        <input id="image" name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
-      </div>
+      <fieldset class="promo-fieldset">
+        <legend>Images</legend>
+        {% if images %}
+        <p class="field-hint">Choose the cover picture (shown in listings) or tick Remove to delete a picture.</p>
+        <ul class="image-manager">
+          {% for img in images %}
+          <li>
+            <img src="{{ url_for('product_image', filename=img.filename) }}" alt="Picture {{ loop.index }} of this product">
+            <label class="checkbox"><input type="radio" name="cover_image" value="{{ img.id }}" {% if loop.first %}checked{% endif %}> Cover</label>
+            <label class="checkbox"><input type="checkbox" name="remove_image" value="{{ img.id }}"> Remove</label>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        <div class="field">
+          <label for="images">{{ 'Add more images' if images else 'Product images' }}</label>
+          <p class="field-hint">PNG, JPG, GIF, WebP or AVIF, up to 2 MB each, {{ MAX_IMAGES }} images per product in total. Hold Ctrl or Cmd to pick several. The first one becomes the cover.</p>
+          <input id="images" name="images" type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
+                 data-max-images="{{ MAX_IMAGES }}" data-existing="{{ images | length }}">
+          <p class="field-feedback" id="images-feedback" aria-live="polite"></p>
+          <ul class="image-previews" id="image-previews" aria-label="Selected images"></ul>
+        </div>
+      </fieldset>
+
+      <fieldset class="promo-fieldset">
+        <legend>Badges</legend>
+        <label class="checkbox"><input type="checkbox" name="free_shipping" value="1" {% if form.get('free_shipping') %}checked{% endif %}>
+          <span>Free shipping <span class="field-hint">Shows a &ldquo;Free shipping&rdquo; badge. Only tick this if you will deliver without charging extra.</span></span></label>
+        <p class="field-hint">&ldquo;Sale&rdquo;, &ldquo;New&rdquo;, &ldquo;Best seller&rdquo; and &ldquo;Only N left&rdquo; appear automatically. &ldquo;LumaMarket&rsquo;s Choice&rdquo; is awarded by the marketplace team.</p>
+      </fieldset>
       <div class="form-actions">
         <button class="button button-primary" type="submit">{{ 'Save changes' if editing else 'Create product' }}</button>
         <a class="button button-ghost" href="{{ url_for('seller_dashboard') }}">Cancel</a>

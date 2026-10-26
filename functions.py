@@ -51,6 +51,7 @@ def init_db():
         else:
             create_users_table(connection)
         create_other_tables(connection)
+        upgrade_products(connection)
         connection.commit()
     finally:
         connection.close()
@@ -118,6 +119,15 @@ def create_other_tables(connection):
         );
         CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_id);
 
+        -- Every picture of a product; products.image always mirrors the first one (the cover).
+        CREATE TABLE IF NOT EXISTS product_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_product_images ON product_images(product_id, position);
+
         CREATE TABLE IF NOT EXISTS cart_items (
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -162,6 +172,20 @@ def create_other_tables(connection):
         );
         """
     )
+
+
+def upgrade_products(connection):
+    """Columns and data added after the first shop release (safe to repeat)."""
+    columns = [row["name"] for row in connection.execute("PRAGMA table_info(products)")]
+    if "free_shipping" not in columns:  # set by the seller
+        connection.execute("ALTER TABLE products ADD COLUMN free_shipping INTEGER NOT NULL DEFAULT 0")
+    if "is_choice" not in columns:  # set by an Admin only
+        connection.execute("ALTER TABLE products ADD COLUMN is_choice INTEGER NOT NULL DEFAULT 0")
+    # Products that had a single image keep it as their first gallery picture.
+    connection.execute(
+        """INSERT INTO product_images (product_id, filename, position)
+           SELECT id, image, 0 FROM products
+           WHERE image IS NOT NULL AND id NOT IN (SELECT product_id FROM product_images)""")
 
 
 def password_error(password):

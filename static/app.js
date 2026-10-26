@@ -86,3 +86,183 @@ window.addEventListener("pageshow", function () {
     button.textContent = "Get weather";
   });
 });
+
+// --- Shop: side cart, toast, image gallery, image upload preview ---------------------------
+// Everything here is an enhancement. Without JavaScript the same forms post normally and the
+// server redirects to the full cart page.
+document.addEventListener("DOMContentLoaded", function () {
+  var drawer = document.getElementById("cart-drawer");
+  var backdrop = document.querySelector(".drawer-backdrop");
+  var content = document.getElementById("cart-drawer-content");
+  var toastEl = document.getElementById("toast");
+  var lastFocus = null;
+  var toastTimer = null;
+
+  function toast(message, kind) {
+    if (!toastEl) { return; }
+    toastEl.textContent = message;
+    toastEl.className = "toast toast-" + (kind || "info");
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.hidden = true; }, 5000);
+  }
+
+  function setCount(count) {
+    document.querySelectorAll("[data-cart-count]").forEach(function (badge) {
+      badge.innerHTML = '<span class="visually-hidden">Items in cart: </span>' + count;
+      badge.hidden = !count;
+    });
+  }
+
+  function render(data) {
+    content.innerHTML = data.html;
+    setCount(data.count);
+  }
+
+  function isOpen() { return drawer && !drawer.hidden; }
+
+  function openDrawer() {
+    if (!drawer || isOpen()) { return; }
+    lastFocus = document.activeElement;
+    drawer.hidden = false;
+    backdrop.hidden = false;
+    document.body.classList.add("drawer-open");
+    requestAnimationFrame(function () {   // lets the slide-in transition run
+      drawer.classList.add("is-open");
+      backdrop.classList.add("is-open");
+    });
+    drawer.focus();
+  }
+
+  function closeDrawer() {
+    if (!isOpen()) { return; }
+    drawer.classList.remove("is-open");
+    backdrop.classList.remove("is-open");
+    document.body.classList.remove("drawer-open");
+    setTimeout(function () { drawer.hidden = true; backdrop.hidden = true; }, 220);
+    if (lastFocus && document.contains(lastFocus)) { lastFocus.focus(); }
+  }
+
+  // The drawer answers with JSON: { ok, message, count, html }. Anything else (for example a
+  // redirect to the sign-in page after the session ended) throws, and the caller falls back.
+  function cartRequest(url, form) {
+    var options = { headers: { "X-Requested-With": "fetch", "Accept": "application/json" }, credentials: "same-origin" };
+    if (form) { options.method = "POST"; options.body = new FormData(form); }
+    return fetch(url, options).then(function (response) {
+      if ((response.headers.get("content-type") || "").indexOf("application/json") === -1) {
+        throw new Error("unexpected response");
+      }
+      return response.json();
+    });
+  }
+
+  // 5. "Add to cart": add in the background, then slide the cart in. The page stays where it is.
+  document.querySelectorAll("form[data-cart-add]").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (!drawer) { return; }
+      event.preventDefault();
+      var button = form.querySelector("button[type=submit]");
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      cartRequest(form.action, form).then(function (data) {
+        if (data.ok) { render(data); openDrawer(); } else { toast(data.message, "error"); }
+      }).catch(function () {
+        form.submit();              // no JSON came back: do it the classic way
+      }).then(function () {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      });
+    });
+  });
+
+  if (!drawer) { return; }
+
+  // Open the side cart from the header link (the link still goes to /cart without JavaScript).
+  document.querySelectorAll("[data-open-cart]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || link.getAttribute("aria-current") === "page") { return; }
+      event.preventDefault();
+      cartRequest("/cart/drawer").then(function (data) { render(data); openDrawer(); })
+        .catch(function () { window.location.href = link.href; });
+    });
+  });
+
+  // Close buttons are re-rendered with the drawer, so listen on the document.
+  document.addEventListener("click", function (event) {
+    if (event.target.closest("[data-drawer-close]")) { closeDrawer(); }
+  });
+  document.addEventListener("keydown", function (event) {
+    if (!isOpen()) { return; }
+    if (event.key === "Escape") { closeDrawer(); return; }
+    if (event.key === "Tab") {        // keep keyboard focus inside the open dialog
+      var focusable = drawer.querySelectorAll("a[href], button:not([disabled]), input:not([disabled])");
+      if (!focusable.length) { event.preventDefault(); drawer.focus(); return; }
+      var first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === drawer)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+  });
+
+  // Quantity and Remove inside the drawer.
+  content.addEventListener("submit", function (event) {
+    var form = event.target.closest("form[data-cart-form]");
+    if (!form) { return; }
+    event.preventDefault();
+    cartRequest(form.action, form).then(function (data) { render(data); drawer.focus(); })
+      .catch(function () { form.submit(); });
+  });
+  content.addEventListener("change", function (event) {
+    var form = event.target.closest("form[data-autosubmit]");
+    if (form && form.checkValidity()) { form.requestSubmit(); }
+  });
+});
+
+document.addEventListener("DOMContentLoaded", function () {
+  // 6. Product gallery: clicking a thumbnail swaps the large picture (the link opens the file without JavaScript).
+  var main = document.getElementById("gallery-main");
+  document.querySelectorAll("[data-gallery-thumb]").forEach(function (thumb) {
+    thumb.addEventListener("click", function (event) {
+      if (!main) { return; }
+      event.preventDefault();
+      main.src = thumb.href;
+      main.alt = thumb.dataset.alt;
+      document.querySelectorAll("[data-gallery-thumb]").forEach(function (other) { other.removeAttribute("aria-current"); });
+      thumb.setAttribute("aria-current", "true");
+    });
+  });
+
+  // 7. Product form: preview chosen images and warn before upload about count and size.
+  var input = document.getElementById("images");
+  if (input) {
+    var feedback = document.getElementById("images-feedback");
+    var previews = document.getElementById("image-previews");
+    var max = Number(input.dataset.maxImages);
+    var existing = Number(input.dataset.existing) || 0;
+    if (!(max > 0)) { return; }   // no limit information on the page: leave checking to the server
+    var removeBoxes = document.querySelectorAll('input[name="remove_image"]');
+
+    function check() {
+      var removing = Array.prototype.filter.call(removeBoxes, function (box) { return box.checked; }).length;
+      var room = max - (existing - removing);
+      var files = Array.prototype.slice.call(input.files);
+      var tooBig = files.filter(function (file) { return file.size > 2 * 1024 * 1024; });
+      var problem = "";
+      if (files.length > room) { problem = "You can add " + room + " more image" + (room === 1 ? "" : "s") + " (limit " + max + " per product)."; }
+      else if (tooBig.length) { problem = tooBig[0].name + " is larger than 2 MB."; }
+      input.setCustomValidity(problem);
+      feedback.textContent = problem || (files.length ? files.length + " image" + (files.length === 1 ? "" : "s") + " selected." : "");
+      feedback.className = "field-feedback " + (problem ? "is-invalid" : "is-valid");
+      previews.innerHTML = "";
+      files.forEach(function (file, index) {
+        var item = document.createElement("li");
+        var img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+        img.alt = "Preview of " + file.name;
+        item.appendChild(img);
+        previews.appendChild(item);
+      });
+    }
+    input.addEventListener("change", check);
+    removeBoxes.forEach(function (box) { box.addEventListener("change", check); });
+  }
+});
