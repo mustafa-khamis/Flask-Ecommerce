@@ -24,7 +24,6 @@
     <span class="price-now">{{ info.current_cents | money }}</span>
     {% if info.on_sale %}
       <s class="price-was"><span class="visually-hidden">Regular price </span>{{ info.regular_cents | money }}</s>
-      {% if info.percent_off %}<span class="badge badge-sale">-{{ info.percent_off }}%</span>{% endif %}
     {% endif %}
   </p>
 {% endmacro %}
@@ -35,6 +34,40 @@
   {% else %}<span class="stock stock-in">In stock</span>{% endif %}
 {% endmacro %}
 
+{# Trust badges. Sale, new, best seller and low stock are earned from real data; free shipping is
+   set by the seller; "Choice" is awarded by an Admin. The icon is decoration, the label carries the meaning. #}
+{% macro badges(product, limit=4) %}
+  {% set icons = {'sale': 'tag', 'choice': 'award', 'bestseller': 'trending', 'shipping': 'truck', 'new': 'star', 'low': 'clock'} %}
+  {% set found = product_badges(product) %}
+  {% if found %}
+  <ul class="badge-list" aria-label="Product highlights">
+    {% for b in found[:limit] %}
+      <li class="pbadge pbadge-{{ b.key }}"><svg class="icon" aria-hidden="true"><use href="#i-{{ icons[b.key] }}"/></svg>{{ b.label }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+{% endmacro %}
+
+{# One-click "Add to cart" with a cart icon. Buyers: adds without leaving the page (app.js opens the
+   side cart; without JavaScript the form posts normally). Visitors: goes to sign in. Other roles: nothing. #}
+{% macro add_to_cart(product, quantity=1, full=False) %}
+  {% if product.stock <= 0 or not product.is_active %}
+    <button class="button button-secondary button-small{{ ' button-block' if full }}" type="button" disabled>Out of stock</button>
+  {% elif g.user and g.user.role == 'Buyer' %}
+    <form method="post" action="{{ url_for('cart_add') }}" data-cart-add>{{ csrf_input() }}
+      <input type="hidden" name="product_id" value="{{ product.id }}">
+      <input type="hidden" name="quantity" value="{{ quantity }}">
+      <button class="button button-primary button-small{{ ' button-block' if full }}" type="submit">
+        <svg class="icon" aria-hidden="true"><use href="#i-cart"/></svg>Add to cart<span class="visually-hidden">: {{ product.name }}</span>
+      </button>
+    </form>
+  {% elif not g.user %}
+    <a class="button button-primary button-small{{ ' button-block' if full }}" href="{{ url_for('login') }}">
+      <svg class="icon" aria-hidden="true"><use href="#i-cart"/></svg>Sign in to add<span class="visually-hidden">: {{ product.name }}</span>
+    </a>
+  {% endif %}
+{% endmacro %}
+
 {% macro product_card(product) %}
 <article class="product-card">
   <a class="product-image" href="{{ url_for('product_detail', product_id=product.id) }}" tabindex="-1" aria-hidden="true">
@@ -42,10 +75,12 @@
     {% else %}<span class="product-image-empty">No image</span>{% endif %}
   </a>
   <div class="product-body">
+    {{ badges(product, 3) }}
     <h3><a href="{{ url_for('product_detail', product_id=product.id) }}">{{ product.name }}</a></h3>
     <p class="product-seller">Sold by {{ product.seller_name }}</p>
     {{ price_block(product) }}
     {{ stock_label(product) }}
+    <div class="product-actions">{{ add_to_cart(product, full=True) }}</div>
   </div>
 </article>
 {% endmacro %}

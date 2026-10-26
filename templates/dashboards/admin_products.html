@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badges %}
+{% block title %}Products | LumaMarket{% endblock %}
+{% block content %}
+<div class="container page">
+  <p class="breadcrumb"><a href="{{ url_for('admin_dashboard') }}">&larr; Admin dashboard</a></p>
+  <header class="page-header"><div><p class="eyebrow">Admin dashboard</p><h1>Products</h1>
+    <p>Review all products and award the &ldquo;LumaMarket&rsquo;s Choice&rdquo; badge to products you recommend. Sellers cannot set it themselves.</p></div></header>
+  <section class="panel panel-flush" aria-label="All products">
+    {% if products %}
+    <div class="table-wrap">
+      <table class="cart-table">
+        <thead><tr><th scope="col">Product</th><th scope="col">Seller</th><th scope="col">Badges</th><th scope="col"><span class="visually-hidden">Action</span></th></tr></thead>
+        <tbody>
+        {% for p in products %}
+          <tr class="{% if not p.is_active %}is-inactive{% endif %}">
+            <th scope="row" class="user-cell"><a class="user-name" href="{{ url_for('product_detail', product_id=p.id) }}">{{ p.name }}</a>
+              {% if not p.is_active %}<span class="field-hint">Hidden by seller</span>{% endif %}</th>
+            <td data-label="Seller">{{ p.seller_name }}</td>
+            <td data-label="Badges">{{ badges(p, 6) }}</td>
+            <td class="action-cell">
+              <form method="post" action="{{ url_for('admin_product_choice', product_id=p.id) }}">{{ csrf_input() }}
+                <input type="hidden" name="choice" value="{{ 0 if p.is_choice else 1 }}">
+                <button class="button {{ 'button-secondary' if p.is_choice else 'button-primary' }} button-small" type="submit">
+                  {{ 'Remove Choice badge' if p.is_choice else "Award Choice badge" }}<span class="visually-hidden"> for {{ p.name }}</span></button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="empty-state"><h3>No products yet</h3><p>Products listed by sellers will appear here.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

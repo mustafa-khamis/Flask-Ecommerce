@@ -9,17 +9,21 @@
       <h1>User management</h1>
       <p>Review registered accounts, change account types and activate or deactivate users.</p>
     </div>
-    <a class="button button-secondary" href="{{ url_for('admin_weather') }}">Weather search history</a>
+    <div class="button-row">
+      <a class="button button-secondary" href="{{ url_for('admin_products') }}">Products</a>
+      <a class="button button-secondary" href="{{ url_for('admin_weather') }}">Weather search history</a>
+    </div>
   </header>
 
-  <section class="stat-strip" aria-label="Account summary">
+  <section class="stat-strip admin-summary" aria-label="Account summary">
     <dl>
-      <div class="stat"><dt>Total users</dt><dd>{{ stats.total }}</dd></div>
-      <div class="stat"><dt>Active</dt><dd>{{ stats.active }}</dd></div>
-      <div class="stat"><dt>Inactive</dt><dd>{{ stats.inactive }}</dd></div>
-      <div class="stat"><dt>Buyers</dt><dd>{{ stats.buyers }}</dd></div>
-      <div class="stat"><dt>Sellers</dt><dd>{{ stats.sellers }}</dd></div>
-      <div class="stat"><dt>Admins</dt><dd>{{ stats.admins }}</dd></div>
+      <div class="stat"><dt>Total users</dt><dd><a href="{{ url_for('admin_dashboard') }}#users-title">{{ stats.total }}</a></dd></div>
+      <div class="stat"><dt>Active</dt><dd><a href="{{ url_for('admin_dashboard') }}#users-title">{{ stats.active }}</a></dd></div>
+      <div class="stat"><dt>Inactive</dt><dd><a href="{{ url_for('admin_dashboard') }}#users-title">{{ stats.inactive }}</a></dd></div>
+      <div class="stat"><dt>Buyers</dt><dd><a href="{{ url_for('admin_dashboard', role='Buyer') }}#users-title">{{ stats.buyers }}</a></dd></div>
+      <div class="stat"><dt>Sellers</dt><dd><a href="{{ url_for('admin_dashboard', role='Seller') }}#users-title">{{ stats.sellers }}</a></dd></div>
+      <div class="stat"><dt>Admins</dt><dd><a href="{{ url_for('admin_dashboard', role='Admin') }}#users-title">{{ stats.admins }}</a></dd></div>
+      <div class="stat"><dt>Products</dt><dd><a href="{{ url_for('admin_products') }}">{{ stats.products }}</a></dd></div>
     </dl>
   </section>
 

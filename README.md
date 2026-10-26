@@ -49,14 +49,20 @@ New Google users choose Buyer or Seller (never Admin). They have no password (`h
 |---|---|---|
 | Auth | `/register`, `/login`, `POST /logout`, `/forgot-password`, `/reset-password/<token>`, `/auth/google…` | public |
 | Profile | `/profile`, `POST /profile/password` | signed in |
-| Catalogue | `/products`, `/products/<id>`, `/uploads/products/<file>` | public |
+| Catalogue | `/products`, `/products/<id>` (image gallery), `/uploads/products/<file>` | public |
 | Seller | `/seller/dashboard`, `/seller/products/new`, `/seller/products/<id>/edit`, `POST …/status` | Seller (own products only) |
-| Buyer | `/cart`, `POST /cart/add`, `/cart/update/<id>`, `/cart/remove/<id>`, `/checkout`, `/orders`, `/orders/<id>` | Buyer |
+| Buyer | `/cart`, `/cart/drawer`, `POST /cart/add`, `/cart/update/<id>`, `/cart/remove/<id>`, `/checkout`, `/orders`, `/orders/<id>` | Buyer |
 | Weather | `/weather` | public |
-| Admin | `/admin/dashboard`, `POST /admin/users/<id>`, `POST /admin/admins`, `/admin/weather` | Admin |
+| Admin | `/admin/dashboard`, `POST /admin/users/<id>`, `POST /admin/admins`, `/admin/weather`, `/admin/products`, `POST /admin/products/<id>/choice` | Admin |
 
 ### Security measures
 Hashed passwords (Werkzeug scrypt); CSRF token on every POST; server-side role checks on every protected route; reset tokens are random, stored only as SHA-256 hashes, expire after 30 minutes, are single use (claimed atomically) and a new request cancels older links; the forgot-password answer is identical whether or not the email exists; reset requests are limited to 3 per email and 10 per IP per hour, sign-in to 10 failures per 15 minutes; password rules (8–128 chars, a letter and a number); image uploads are checked by their real bytes (PNG/JPG/GIF/WebP, ≤ 2 MB) and saved under random names; SQL uses parameters only; foreign keys and CHECK constraints are on; no-store cache headers so Back never shows a signed-out dashboard.
+
+### Images, badges and the side cart
+- **Several images per product** (up to 6, 2 MB each, PNG/JPG/GIF/WebP checked by real file content). The first is the cover; sellers can pick another cover or remove pictures when editing. One bad file rejects the whole upload and nothing is kept. Products that had one image are migrated automatically.
+- **Badges** are never invented: *-N% off*, *New* (14 days), *Best seller* (5+ units sold) and *Only N left* (5 or fewer) are computed from real data; *Free shipping* is declared by the seller (the shop does not charge shipping fees, so the badge states the seller's promise); *LumaMarket's Choice* can only be awarded by an Admin at `/admin/products`.
+- **Add to cart** buttons (with a cart icon) are on every product card and product page. For Buyers the item is added in the background and a **side cart** slides in with *Continue to checkout* and *Continue shopping*, so the page never jumps away. Quantity and Remove work inside the side cart. It is keyboard accessible (focus is moved in and kept inside, Esc closes, focus returns to the button) and without JavaScript the same forms fall back to the full cart page.
+- Screenshots of these screens (taken from a throw-away demo database) are in `docs/screenshots/`.
 
 ### Pricing and promotions
 Prices are whole cents. A product has a regular price and an optional sale price (must be lower) with optional start/end dates (inclusive). The sale applies only while valid and inside its dates; the discount percentage is `round((regular − sale) / regular × 100)` and is hidden if it would be under 1%. The cart, checkout and order totals are computed on the server from the database; orders store the price actually paid.
@@ -71,13 +77,15 @@ erDiagram
     users ||--o{ products : "sells (seller_id)"
     users ||--o{ cart_items : has
     products ||--o{ cart_items : "in"
+    products ||--o{ product_images : "has pictures"
     users ||--o{ orders : "places (buyer_id)"
     orders ||--|{ order_items : contains
     products ||--o{ order_items : "sold as"
     users ||--o{ password_resets : requests
     users |o--o{ weather_searches : "performs (optional)"
     users { int id PK  text email UK  text password_hash  int has_password  text role  int is_active }
-    products { int id PK  int seller_id FK  text name  int price_cents  int sale_price_cents  text sale_start  text sale_end  int stock  text image  int is_active }
+    products { int id PK  int seller_id FK  text name  int price_cents  int sale_price_cents  text sale_start  text sale_end  int stock  text image  int free_shipping  int is_choice  int is_active }
+    product_images { int id PK  int product_id FK  text filename  int position }
     cart_items { int user_id PK,FK  int product_id PK,FK  int quantity }
     orders { int id PK  int buyer_id FK  int total_cents  text status  text shipping_name  text shipping_address }
     order_items { int id PK  int order_id FK  int product_id FK  int seller_id FK  text product_name  int unit_price_cents  int quantity }
@@ -91,7 +99,7 @@ erDiagram
 ```bash
 python3 -m unittest discover -s tests -t .
 ```
-The tests run on a temporary database and a temporary upload folder (set in `tests/__init__.py`; `wipe_database` refuses to run on anything else), and call neither Resend nor OpenWeather (both are mocked). 63 tests currently pass. They cover: CSRF rejection; role redirects and unauthorized dashboard/admin/seller/cart/order access; login throttling; password rules; reset flow, expiry, reuse, hashing, throttling, no email enumeration, inactive accounts, Google-only accounts; Resend request format; product validation (bad prices/stock/dates/images), database constraints, cross-seller edit attempts; promotions and date windows; cart limits and persistence; checkout totals, stock, rollback, concurrent last-item purchase, no card fields; weather success/validation/not-found/network/API errors, history persistence, admin-only statistics, rate limit.
+The tests run on a temporary database and a temporary upload folder (set in `tests/__init__.py`; `wipe_database` refuses to run on anything else), and call neither Resend nor OpenWeather (both are mocked). All tests currently pass (run the command to see the count). They cover: CSRF rejection; role redirects and unauthorized dashboard/admin/seller/cart/order access; login throttling; password rules; reset flow, expiry, reuse, hashing, throttling, no email enumeration, inactive accounts, Google-only accounts; Resend request format; product validation (bad prices/stock/dates/images), database constraints, cross-seller edit attempts; promotions and date windows; cart limits and persistence; checkout totals, stock, rollback, concurrent last-item purchase, no card fields; multiple images (limits, cover, removal, cleanup, migration), badge rules, Admin-only Choice badge, side-cart JSON endpoints and button visibility by role; weather success/validation/not-found/network/API errors, history persistence, admin-only statistics, rate limit.
 
 ## Manual test plan / demonstration sequence
 1. **Register** a Seller and a Buyer (`/register`); sign in, note the different dashboards; sign out and press Back (login page, not a dashboard).

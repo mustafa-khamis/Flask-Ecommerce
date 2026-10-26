@@ -8,7 +8,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from config import CURRENCY, MAX_UPLOAD_BYTES, UPLOAD_DIR
+from config import CURRENCY, MAX_IMAGES_PER_PRODUCT, MAX_UPLOAD_BYTES, UPLOAD_DIR
 from functions import connect_db
 
 MAX_PRICE_CENTS = 100_000_000      # 1,000,000.00
@@ -120,11 +120,41 @@ def validate_product_form(form):
         "sale_price_cents": sale if sale_text else None,
         "sale_start": start.isoformat() if start else None,
         "sale_end": end.isoformat() if end else None,
+        "free_shipping": 1 if form.get("free_shipping") == "1" else 0,
     }
     return clean, errors
 
 
 # --- Image uploads -----------------------------------------------------------
+def image_extension(data):
+    """Work out the real type from the first bytes of the file. Returns an extension or None."""
+    extension = next((ext for magic, ext in IMAGE_TYPES if data.startswith(magic)), None)
+    if extension is None and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        extension = ".webp"
+    if extension is None and data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis"):
+        extension = ".avif"
+    return extension
+
+
+def describe_unsupported(data):
+    """A short, friendly name for common files that are not usable as product pictures."""
+    head = data[:16]
+    if head[4:8] == b"ftyp":
+        brand = data[8:12]
+        return "a HEIC/HEIF photo" if brand in (b"heic", b"heix", b"mif1", b"msf1", b"hevc") else "a video or other media file"
+    if head.startswith(b"BM"):
+        return "a BMP image"
+    if head[:4] in (b"II*\x00", b"MM\x00*"):
+        return "a TIFF image"
+    if head.startswith(b"%PDF"):
+        return "a PDF document"
+    if data[:200].lstrip().lower().startswith((b"<svg", b"<?xml")):
+        return "an SVG file"
+    if data[:200].lstrip().lower().startswith((b"<!doctype", b"<html")):
+        return "a web page (HTML), usually from saving a link instead of the image"
+    return "not a recognised image format"
+
+
 def save_image(file_storage):
     """Check the real file contents (not just the name), store it under a random name, return that name."""
     data = file_storage.read(MAX_UPLOAD_BYTES + 1)
@@ -132,15 +162,35 @@ def save_image(file_storage):
         raise ValueError("The image file is empty.")
     if len(data) > MAX_UPLOAD_BYTES:
         raise ValueError(f"The image is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
-    extension = next((ext for magic, ext in IMAGE_TYPES if data.startswith(magic)), None)
-    if extension is None and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        extension = ".webp"
+    extension = image_extension(data)
     if extension is None:
-        raise ValueError("Please upload a PNG, JPG, GIF or WebP image.")
+        actual = describe_unsupported(data)
+        raise ValueError(f"this file is {actual}, not a PNG, JPG, GIF, WebP or AVIF image. "
+                         "Renaming a file does not convert it: open it and export or save it as PNG or JPG.")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     filename = uuid.uuid4().hex + extension
     (UPLOAD_DIR / filename).write_bytes(data)
     return filename
+
+
+def save_images(files, already_have=0):
+    """Save every uploaded picture. All or nothing: on any problem the pictures saved so far are removed.
+
+    Returns (filenames, errors).
+    """
+    uploads = [f for f in files if f and f.filename]
+    if already_have + len(uploads) > MAX_IMAGES_PER_PRODUCT:
+        return [], [f"A product can have at most {MAX_IMAGES_PER_PRODUCT} images "
+                    f"({already_have} already saved, {len(uploads)} chosen)."]
+    saved = []
+    for upload in uploads:
+        try:
+            saved.append(save_image(upload))
+        except ValueError as problem:
+            for filename in saved:
+                delete_image(filename)
+            return [], [f"{upload.filename}: {problem}"]
+    return saved, []
 
 
 def delete_image(filename):
@@ -152,6 +202,9 @@ def delete_image(filename):
 
 
 # --- Products ----------------------------------------------------------------
+UNITS_SOLD = "(SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE product_id = p.id) AS units_sold"
+
+
 def _one(sql, params=()):
     connection = connect_db()
     try:
@@ -170,7 +223,7 @@ def _all(sql, params=()):
 
 def get_product(product_id):
     return _one(
-        """SELECT p.*, u.name AS seller_name FROM products p
+        f"""SELECT p.*, u.name AS seller_name, {UNITS_SOLD} FROM products p
            JOIN users u ON u.id = p.seller_id WHERE p.id = ?""", (product_id,))
 
 
@@ -184,7 +237,7 @@ def search_catalogue(search="", page=1):
         params += [f"%{escaped}%"] * 2
     total = _one(f"SELECT COUNT(*) FROM products p JOIN users u ON u.id = p.seller_id WHERE {where}", params)[0]
     rows = _all(
-        f"""SELECT p.*, u.name AS seller_name FROM products p JOIN users u ON u.id = p.seller_id
+        f"""SELECT p.*, u.name AS seller_name, {UNITS_SOLD} FROM products p JOIN users u ON u.id = p.seller_id
             WHERE {where} ORDER BY p.created_at DESC, p.id DESC LIMIT ? OFFSET ?""",
         params + [PAGE_SIZE, (max(page, 1) - 1) * PAGE_SIZE])
     return rows, total
@@ -195,36 +248,77 @@ def latest_products(limit=4):
 
 
 def seller_products(seller_id):
-    return _all("SELECT * FROM products WHERE seller_id = ? ORDER BY created_at DESC, id DESC", (seller_id,))
+    return _all(f"SELECT p.*, {UNITS_SOLD} FROM products p WHERE seller_id = ? ORDER BY created_at DESC, id DESC", (seller_id,))
 
 
-def create_product(seller_id, values, image):
+def product_images(product_id):
+    return _all("SELECT * FROM product_images WHERE product_id = ? ORDER BY position, id", (product_id,))
+
+
+def _sync_cover(connection, product_id):
+    """Renumber the pictures 0, 1, 2... and make products.image the first one."""
+    rows = connection.execute(
+        "SELECT id, filename FROM product_images WHERE product_id = ? ORDER BY position, id", (product_id,)).fetchall()
+    for position, row in enumerate(rows):
+        connection.execute("UPDATE product_images SET position = ? WHERE id = ?", (position, row["id"]))
+    connection.execute("UPDATE products SET image = ? WHERE id = ?", (rows[0]["filename"] if rows else None, product_id))
+
+
+def create_product(seller_id, values, images):
+    """images is a list of already-saved filenames; the first one becomes the cover."""
     connection = connect_db()
     try:
         cursor = connection.execute(
             """INSERT INTO products (seller_id, name, description, price_cents, sale_price_cents,
-                                     sale_start, sale_end, stock, image)
+                                     sale_start, sale_end, stock, free_shipping)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (seller_id, values["name"], values["description"], values["price_cents"],
-             values["sale_price_cents"], values["sale_start"], values["sale_end"], values["stock"], image))
+             values["sale_price_cents"], values["sale_start"], values["sale_end"], values["stock"],
+             values["free_shipping"]))
+        product_id = cursor.lastrowid
+        for position, filename in enumerate(images):
+            connection.execute("INSERT INTO product_images (product_id, filename, position) VALUES (?, ?, ?)",
+                               (product_id, filename, position))
+        _sync_cover(connection, product_id)
         connection.commit()
-        return cursor.lastrowid
+        return product_id
     finally:
         connection.close()
 
 
-def update_product(product_id, seller_id, values, image):
-    """The seller_id in the WHERE clause means nobody can edit another seller's product, even by guessing ids."""
+def update_product(product_id, seller_id, values, new_images=(), remove_ids=(), cover_id=None):
+    """Returns (updated, removed_filenames). The seller_id in the WHERE clause means nobody can edit
+    another seller's product, even by guessing ids; image ids are also checked against this product."""
     connection = connect_db()
     try:
         cursor = connection.execute(
             """UPDATE products SET name = ?, description = ?, price_cents = ?, sale_price_cents = ?,
-                      sale_start = ?, sale_end = ?, stock = ?, image = ?, updated_at = CURRENT_TIMESTAMP
+                      sale_start = ?, sale_end = ?, stock = ?, free_shipping = ?, updated_at = CURRENT_TIMESTAMP
                WHERE id = ? AND seller_id = ?""",
             (values["name"], values["description"], values["price_cents"], values["sale_price_cents"],
-             values["sale_start"], values["sale_end"], values["stock"], image, product_id, seller_id))
+             values["sale_start"], values["sale_end"], values["stock"], values["free_shipping"],
+             product_id, seller_id))
+        if cursor.rowcount != 1:
+            connection.rollback()
+            return False, []
+        removed = []
+        for image_id in remove_ids:
+            row = connection.execute(
+                "SELECT filename FROM product_images WHERE id = ? AND product_id = ?", (image_id, product_id)).fetchone()
+            if row:
+                removed.append(row["filename"])
+                connection.execute("DELETE FROM product_images WHERE id = ?", (image_id,))
+        last = connection.execute(
+            "SELECT COALESCE(MAX(position), -1) FROM product_images WHERE product_id = ?", (product_id,)).fetchone()[0]
+        for offset, filename in enumerate(new_images, start=1):
+            connection.execute("INSERT INTO product_images (product_id, filename, position) VALUES (?, ?, ?)",
+                               (product_id, filename, last + offset))
+        if cover_id:  # move the chosen picture to the front
+            connection.execute("UPDATE product_images SET position = -1 WHERE id = ? AND product_id = ?",
+                               (cover_id, product_id))
+        _sync_cover(connection, product_id)
         connection.commit()
-        return cursor.rowcount == 1
+        return True, removed
     finally:
         connection.close()
 
@@ -395,3 +489,52 @@ def seller_sales(seller_id, limit=20):
         """SELECT oi.*, o.created_at, o.status, u.name AS buyer_name FROM order_items oi
            JOIN orders o ON o.id = oi.order_id JOIN users u ON u.id = o.buyer_id
            WHERE oi.seller_id = ? ORDER BY o.created_at DESC, oi.id DESC LIMIT ?""", (seller_id, limit))
+
+
+# --- Trust badges ------------------------------------------------------------------
+NEW_DAYS = 14
+LOW_STOCK_AT = 5
+BEST_SELLER_UNITS = 5
+
+
+def product_badges(product, today=None):
+    """Badges shown on a product, most important first.
+
+    Earned automatically from real data (sale, new, low stock, best seller), declared by the
+    seller (free shipping), or awarded by an Admin (LumaMarket's Choice). Never invented.
+    """
+    keys = product.keys()
+    badges = []
+    info = price_info(product, today)
+    if info["on_sale"] and info["percent_off"]:
+        badges.append({"key": "sale", "label": f"-{info['percent_off']}% off"})
+    if "is_choice" in keys and product["is_choice"]:
+        badges.append({"key": "choice", "label": "LumaMarket's Choice"})
+    if "units_sold" in keys and (product["units_sold"] or 0) >= BEST_SELLER_UNITS:
+        badges.append({"key": "bestseller", "label": "Best seller"})
+    if "free_shipping" in keys and product["free_shipping"]:
+        badges.append({"key": "shipping", "label": "Free shipping"})
+    try:
+        added = datetime.strptime(str(product["created_at"])[:10], "%Y-%m-%d").date()
+        if 0 <= ((today or date.today()) - added).days <= NEW_DAYS:
+            badges.append({"key": "new", "label": "New"})
+    except (KeyError, ValueError):
+        pass
+    if 0 < product["stock"] <= LOW_STOCK_AT:
+        badges.append({"key": "low", "label": f"Only {product['stock']} left"})
+    return badges
+
+
+def set_product_choice(product_id, is_choice):
+    connection = connect_db()
+    try:
+        cursor = connection.execute("UPDATE products SET is_choice = ? WHERE id = ?", (1 if is_choice else 0, product_id))
+        connection.commit()
+        return cursor.rowcount == 1
+    finally:
+        connection.close()
+
+
+def all_products_for_admin():
+    return _all(f"""SELECT p.*, u.name AS seller_name, {UNITS_SOLD} FROM products p
+                    JOIN users u ON u.id = p.seller_id ORDER BY p.is_choice DESC, p.created_at DESC""")
