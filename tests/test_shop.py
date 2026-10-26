@@ -174,6 +174,11 @@ class MobileHeaderTests(ShopBase):
         self.assertRegex(page, r'<button class="nav-toggle"[^>]*\bhidden\b')
         self.assertIn('document.documentElement.classList.add("js")', page)
 
+    def test_css_and_js_links_carry_a_version_so_updates_are_never_hidden_by_the_cache(self):
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertRegex(page, r'href="/static/style\.css\?v=\d{9,}"')
+        self.assertRegex(page, r'src="/static/app\.js\?v=\d{9,}"')
+
     def test_buyers_get_a_cart_shortcut_next_to_the_menu_button(self):
         self.assertIn("header-cart", self.buyer.get("/products").get_data(as_text=True))
         for client in (self.client, self.seller):

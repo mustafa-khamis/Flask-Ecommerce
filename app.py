@@ -63,8 +63,19 @@ def format_date(value):
     return f"{day.day} {day:%b %Y}"
 
 
+def static_url(filename):
+    """Link to a static file with its last-changed time attached (style.css?v=1793...), so browsers
+    fetch the new copy after every update instead of reusing an old cached one."""
+    try:
+        version = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+    except OSError:
+        version = 0
+    return url_for("static", filename=filename, v=version)
+
+
 # Helpers available in every template.
 app.jinja_env.globals["dashboard_url"] = dashboard_url
+app.jinja_env.globals["static_url"] = static_url
 app.jinja_env.globals["current_year"] = date.today().year
 app.jinja_env.globals["google_enabled"] = GOOGLE_ENABLED
 app.jinja_env.filters["date"] = format_date
