@@ -26,6 +26,11 @@ The database (`EcommerceDB`) is created or upgraded automatically on start. The 
 | `OPENWEATHER_API_KEY` | weather | See OpenWeather below. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Google sign-in | Button is hidden when empty. |
 | `CURRENCY`, `UPLOAD_DIR` | optional | Currency symbol (default `$`) and image folder. |
+| `GEOIP_ENABLED` | optional | `0` switches off the IP-based location on the Weather page (default on). |
+| `TRUST_PROXY` | hosting | `1` when a proxy/host sits in front of the app so the real visitor IP is used. Turned on automatically on Render. |
+
+### Weather for your current city (IP location)
+Opening `/weather` for the first time estimates the visitor's city from their IP address using [ipwho.is](https://ipwho.is) (HTTPS, no key) and shows that city's weather, with a **Change location** button (search by city or coordinates) and a **Use my current location** button to go back. The IP is sent to ipwho.is only for the lookup and is never stored; only the city and coordinates are kept in the visitor's session. The estimate is approximate (a VPN or mobile network may show another city). On your own computer the address is `127.0.0.1`, so the lookup uses your machine's public address instead. Behind a host such as Render the real visitor IP comes from `X-Forwarded-For`; `TRUST_PROXY` (automatic on Render) enables that.
 
 ### Resend (password reset emails)
 1. Create an account at resend.com, then **API Keys → Create API Key**; put it in `RESEND_API_KEY`.
@@ -52,7 +57,7 @@ New Google users choose Buyer or Seller (never Admin). They have no password (`h
 | Catalogue | `/products`, `/products/<id>` (image gallery), `/uploads/products/<file>` | public |
 | Seller | `/seller/dashboard`, `/seller/products/new`, `/seller/products/<id>/edit`, `POST …/status` | Seller (own products only) |
 | Buyer | `/cart`, `/cart/drawer`, `POST /cart/add`, `/cart/update/<id>`, `/cart/remove/<id>`, `/checkout`, `/orders`, `/orders/<id>` | Buyer |
-| Weather | `/weather` | public |
+| Weather | `/weather`, `POST /weather/detect` | public |
 | Admin | `/admin/dashboard`, `POST /admin/users/<id>`, `POST /admin/admins`, `/admin/weather`, `/admin/products`, `POST /admin/products/<id>/choice` | Admin |
 
 ### Security measures
@@ -126,4 +131,4 @@ The tests run on a temporary database and a temporary upload folder (set in `tes
 - Accounts created with Google before this update are not flagged `has_password = 0`; they can still use **Forgot password** to set a password.
 - Orders have a single status ("Confirmed"); no shipping workflow, refunds or seller order management beyond the sales list.
 - Rate limits are keyed on the client IP as the server sees it; behind a proxy configure it to pass the real IP.
-- Screenshots are not included: they need a browser session which was not run here.
+- IP-based location is only approximate and depends on a third-party service (ipwho.is); if it is unavailable the page falls back to the search form.

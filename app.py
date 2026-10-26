@@ -12,12 +12,15 @@ from flask import (
     Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for,
 )
 from markupsafe import Markup
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash
 
 from config import (
     APP_BASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ENABLED, GOOGLE_REDIRECT_URI,
-    MAX_IMAGES_PER_PRODUCT, MAX_UPLOAD_BYTES, PASSWORD_RESET_MINUTES, SECRET_KEY, SESSION_COOKIE_SECURE, UPLOAD_DIR,
+    MAX_IMAGES_PER_PRODUCT, MAX_UPLOAD_BYTES, PASSWORD_RESET_MINUTES, SECRET_KEY, SESSION_COOKIE_SECURE,
+    TRUST_PROXY, UPLOAD_DIR,
 )
+import geolocation
 import shop
 import weather as weather_service
 from emailer import send_reset_email
@@ -30,6 +33,10 @@ from functions import (
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+if TRUST_PROXY:
+    # Use the visitor address that the hosting proxy puts in X-Forwarded-For (one proxy deep),
+    # otherwise every visitor would look like the proxy: same location and shared rate limits.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = SESSION_COOKIE_SECURE
@@ -502,31 +509,85 @@ def admin_create_admin():
 
 
 # --- Weather (public) ------------------------------------------------------------
-@app.route("/weather")
-def weather():
-    mode = "coordinates" if request.args.get("mode") == "coordinates" else "city"
-    searched = any(key in request.args for key in ("city", "lat", "lon"))
-    context = {"mode": mode, "form": request.args, "report": None, "error": None, "searched": searched}
-    if not searched:
-        return render_template("weather.html", **context)
+def saved_location():
+    """The place the weather page is currently showing for this visitor, or None."""
+    place = session.get("weather_location")
+    if isinstance(place, dict) and {"city", "lat", "lon"} <= place.keys():
+        return place
+    return None
 
-    user_id = g.user["id"] if g.user else None
-    query = (request.args.get("city", "") if mode == "city"
-             else f"{request.args.get('lat', '')}, {request.args.get('lon', '')}")
-    status = 200
+
+def remember_location(city, country, lat, lon, source):
+    session["weather_location"] = {"city": city, "country": country, "lat": lat, "lon": lon, "source": source}
+
+
+def detect_location():
+    """Estimate the visitor's city from their IP address and remember it for this session."""
+    place = geolocation.locate(request.remote_addr or "")
+    session["location_tried"] = True
+    if place:
+        remember_location(place["city"], place["country"], place["lat"], place["lon"], "ip")
+    else:
+        session.pop("weather_location", None)
+    return saved_location()
+
+
+def run_weather(mode, params, user_id, query, context, label=None):
+    """Look the weather up, save it to the search history and fill in the template context."""
     try:
         ip = request.remote_addr or "unknown"
         if throttle_count("weather", ip, 10) >= 30:  # protects the OpenWeather quota
             raise weather_service.WeatherError("service", "Too many searches in a short time. Please wait a few minutes.")
         throttle_record("weather", ip)
-        report, query = weather_service.lookup(mode, request.args)
+        report, query = weather_service.lookup(mode, params)
         context["report"] = report
-        weather_service.record_search(user_id, mode, query, report=report)
+        weather_service.record_search(user_id, mode, label or query, report=report)
+        return 200
     except weather_service.WeatherError as problem:
         context["error"] = problem
-        status = {"validation": 400, "not_found": 404, "network": 502, "service": 503}[problem.kind]
         weather_service.record_search(user_id, mode, query, error=f"{problem.kind}: {problem}")
-    return render_template("weather.html", **context), status
+        return {"validation": 400, "not_found": 404, "network": 502, "service": 503}[problem.kind]
+
+
+@app.route("/weather")
+def weather():
+    mode = "coordinates" if request.args.get("mode") == "coordinates" else "city"
+    searched = any(key in request.args for key in ("city", "lat", "lon"))
+    user_id = g.user["id"] if g.user else None
+    context = {"mode": mode, "form": request.args, "report": None, "error": None, "searched": searched,
+               "location": None, "show_form": True, "location_failed": False}
+
+    if searched:  # the visitor typed a place: show it and make it their current location
+        query = (request.args.get("city", "") if mode == "city"
+                 else f"{request.args.get('lat', '')}, {request.args.get('lon', '')}")
+        status = run_weather(mode, request.args, user_id, query, context)
+        report = context["report"]
+        if report and report["lat"] is not None:
+            remember_location(report["place"], report["country"], report["lat"], report["lon"], "search")
+            context["location"] = saved_location()  # the page now says "Weather in <that place>"
+        return render_template("weather.html", **context), status
+
+    # No search: use the remembered location, or work one out from the IP address the first time.
+    place = saved_location()
+    if place is None and not session.get("location_tried"):
+        place = detect_location()
+    context["location_failed"] = place is None and geolocation.GEOIP_ENABLED
+    if place:
+        context["location"] = place
+        context["show_form"] = request.args.get("change") == "1"
+        label = f"{place['city']} (detected from IP)" if place["source"] == "ip" else place["city"]
+        status = run_weather("coordinates", {"lat": str(place["lat"]), "lon": str(place["lon"])}, user_id,
+                             label, context, label=label)
+        return render_template("weather.html", **context), status
+    return render_template("weather.html", **context)
+
+
+@app.post("/weather/detect")
+def weather_detect():
+    """"Use my current location": forget the chosen place and estimate it from the IP address again."""
+    if not detect_location():
+        flash("We could not work out your location. Please search for your city instead.", "info")
+    return redirect(url_for("weather"))
 
 
 @app.route("/admin/weather")

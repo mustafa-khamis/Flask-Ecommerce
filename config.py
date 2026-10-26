@@ -39,3 +39,10 @@ UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", BASE_DIR / "static" / "uploads" /
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024   # per image
 MAX_IMAGES_PER_PRODUCT = 6
 CURRENCY = os.environ.get("CURRENCY", "$")
+
+# Approximate location from the visitor's IP address (https://ipwho.is, no key needed).
+# Set GEOIP_ENABLED=0 to switch the feature off.
+GEOIP_ENABLED = os.environ.get("GEOIP_ENABLED", "1") == "1"
+# Behind a proxy (Render, Railway, nginx...) the real visitor IP arrives in X-Forwarded-For.
+# Only turn this on when such a proxy is really in front of the app, or visitors could fake their IP.
+TRUST_PROXY = os.environ.get("TRUST_PROXY", "") == "1" or bool(os.environ.get("RENDER"))

@@ -78,6 +78,8 @@ def parse_report(data):
         icon = data["weather"][0]["icon"]
         return {
             "place": data.get("name") or "Unnamed location",
+            "lat": float(data["coord"]["lat"]) if data.get("coord") else None,
+            "lon": float(data["coord"]["lon"]) if data.get("coord") else None,
             "country": data.get("sys", {}).get("country", ""),
             "temperature": round(float(data["main"]["temp"]), 1),
             "feels_like": round(float(data["main"].get("feels_like", data["main"]["temp"])), 1),

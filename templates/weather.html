@@ -5,17 +5,48 @@
   <header class="page-header">
     <div>
       <p class="eyebrow">Weather</p>
-      <h1>Check the weather</h1>
-      <p>Search by city name or by latitude and longitude. No account needed.</p>
+      <h1>{% if location %}Weather in {{ location.city }}{% if location.country %}, {{ location.country }}{% endif %}{% else %}Check the weather{% endif %}</h1>
+      <p>{% if location %}Current conditions for your location.{% else %}Search by city name or by latitude and longitude. No account needed.{% endif %}</p>
     </div>
   </header>
 
-  <div class="weather-layout">
+  {% if location %}
+  <section class="location-bar" aria-label="Your location">
+    <p class="location-text">
+      <svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg>
+      {% if location.source == 'ip' %}
+        <span>Detected from your internet connection: <strong>{{ location.city }}{% if location.country %}, {{ location.country }}{% endif %}</strong>. This is only an estimate and may be a nearby city.</span>
+      {% else %}
+        <span>Showing: <strong>{{ location.city }}{% if location.country %}, {{ location.country }}{% endif %}</strong></span>
+      {% endif %}
+    </p>
+    <div class="location-actions">
+      {% if not show_form %}<a class="button button-secondary button-small" href="{{ url_for('weather', change=1) }}#search-title">Change location</a>{% endif %}
+      {% if location.source != 'ip' %}
+      <form method="post" action="{{ url_for('weather_detect') }}">{{ csrf_input() }}
+        <button class="button button-ghost button-small" type="submit"><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg>Use my current location</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+  {% elif location_failed %}
+  <section class="location-bar" aria-label="Location detection">
+    <p class="location-text"><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg>
+      <span>We could not work out your location automatically. Search for your city below, or try again.</span></p>
+    <form method="post" action="{{ url_for('weather_detect') }}">{{ csrf_input() }}
+      <button class="button button-secondary button-small" type="submit">Try detecting again</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <div class="weather-layout {% if not show_form %}weather-layout-single{% endif %}">
+    {% if show_form %}
     <section class="panel" aria-labelledby="search-title">
-      <h2 id="search-title" class="visually-hidden">Search</h2>
+      <h2 id="search-title" class="visually-hidden">{{ 'Change location' if location else 'Search' }}</h2>
+      {% if location %}<p class="panel-title">Change location</p>{% endif %}
       <div class="weather-tabs" role="group" aria-label="Search type">
-        <a class="button {{ 'button-primary' if mode == 'city' else 'button-secondary' }} button-small" href="{{ url_for('weather') }}" {% if mode == 'city' %}aria-current="true"{% endif %}>City</a>
-        <a class="button {{ 'button-primary' if mode == 'coordinates' else 'button-secondary' }} button-small" href="{{ url_for('weather', mode='coordinates') }}" {% if mode == 'coordinates' %}aria-current="true"{% endif %}>Coordinates</a>
+        <a class="button {{ 'button-primary' if mode == 'city' else 'button-secondary' }} button-small" href="{{ url_for('weather', change=1 if location else None) }}" {% if mode == 'city' %}aria-current="true"{% endif %}>City</a>
+        <a class="button {{ 'button-primary' if mode == 'coordinates' else 'button-secondary' }} button-small" href="{{ url_for('weather', mode='coordinates', change=1 if location else None) }}" {% if mode == 'coordinates' %}aria-current="true"{% endif %}>Coordinates</a>
       </div>
       <form method="get" class="form" id="weather-form" data-loading-form>
         <input type="hidden" name="mode" value="{{ mode }}">
@@ -38,6 +69,7 @@
         <p class="weather-loading" role="status">Contacting the weather service&hellip;</p>
       </form>
     </section>
+    {% endif %}
 
     <section class="panel weather-result" aria-labelledby="result-title" aria-live="polite">
       <h2 id="result-title" class="visually-hidden">Result</h2>
@@ -56,9 +88,12 @@
         </dl>
         <p class="field-hint">Report from {{ report.observed }}</p>
       {% else %}
-        <div class="empty-state"><h3>No search yet</h3><p>Enter a place on the left to see its current weather.</p></div>
+        <div class="empty-state"><h3>No search yet</h3><p>Enter a place to see its current weather.</p></div>
       {% endif %}
     </section>
   </div>
+  {% if location and location.source == 'ip' %}
+  <p class="field-hint privacy-note">Privacy: your IP address is used once to estimate your city and is not stored. Only the city is kept for this visit.</p>
+  {% endif %}
 </div>
 {% endblock %}
